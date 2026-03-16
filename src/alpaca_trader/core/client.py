@@ -11,6 +11,7 @@ from alpaca.trading.requests import (
     LimitOrderRequest,
     MarketOrderRequest,
     GetOptionContractsRequest,
+    OptionLegRequest,
 )
 from alpaca.trading.enums import (
     OrderSide,
@@ -19,6 +20,8 @@ from alpaca.trading.enums import (
     QueryOrderStatus,
     ContractType,
     ExerciseStyle,
+    OrderClass,
+    PositionIntent,
 )
 from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.historical.stock import StockHistoricalDataClient
@@ -327,6 +330,159 @@ def get_option_chain(
         enriched.append(merged)
 
     return enriched
+
+
+# --- Multi-Leg Orders ---
+
+def _build_leg(symbol: str, ratio_qty: float, side: str, position_intent: str) -> OptionLegRequest:
+    """Build an OptionLegRequest from plain params."""
+    order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
+    intent_map = {
+        "buy_to_open": PositionIntent.BUY_TO_OPEN,
+        "buy_to_close": PositionIntent.BUY_TO_CLOSE,
+        "sell_to_open": PositionIntent.SELL_TO_OPEN,
+        "sell_to_close": PositionIntent.SELL_TO_CLOSE,
+    }
+    intent = intent_map.get(position_intent.lower(), PositionIntent.BUY_TO_OPEN)
+    return OptionLegRequest(symbol=symbol, ratio_qty=ratio_qty, side=order_side, position_intent=intent)
+
+
+def _submit_mleg(legs: list[OptionLegRequest], qty: int, time_in_force: str = "day") -> dict:
+    """Submit a multi-leg market order."""
+    client = _get_trading_client()
+    tif = _parse_tif(time_in_force)
+    request = MarketOrderRequest(
+        order_class=OrderClass.MLEG,
+        qty=qty,
+        time_in_force=tif,
+        legs=legs,
+    )
+    order = client.submit_order(request)
+    return _serialize(order)
+
+
+def place_spread_order(
+    leg1: dict,
+    leg2: dict,
+    qty: int = 1,
+    time_in_force: str = "day",
+) -> dict:
+    """Place a 2-leg vertical spread order.
+
+    Each leg dict: {symbol, ratio_qty, side, position_intent}
+    """
+    legs = [
+        _build_leg(leg1["symbol"], leg1.get("ratio_qty", 1.0), leg1["side"], leg1["position_intent"]),
+        _build_leg(leg2["symbol"], leg2.get("ratio_qty", 1.0), leg2["side"], leg2["position_intent"]),
+    ]
+    return _submit_mleg(legs, qty, time_in_force)
+
+
+def place_iron_condor(
+    legs: list[dict],
+    qty: int = 1,
+    time_in_force: str = "day",
+) -> dict:
+    """Place a 4-leg iron condor order.
+
+    legs: list of 4 dicts each with {symbol, ratio_qty, side, position_intent}
+    """
+    if len(legs) != 4:
+        raise ValueError("Iron condor requires exactly 4 legs")
+    built = [_build_leg(l["symbol"], l.get("ratio_qty", 1.0), l["side"], l["position_intent"]) for l in legs]
+    return _submit_mleg(built, qty, time_in_force)
+
+
+def place_straddle(
+    symbol: str,
+    expiry: date,
+    strike: float,
+    qty: int = 1,
+    time_in_force: str = "day",
+) -> dict:
+    """Buy a straddle: call + put at the same strike and expiry."""
+    call_sym = build_option_symbol(symbol, expiry, "call", strike)
+    put_sym = build_option_symbol(symbol, expiry, "put", strike)
+    legs = [
+        _build_leg(call_sym, 1.0, "buy", "buy_to_open"),
+        _build_leg(put_sym, 1.0, "buy", "buy_to_open"),
+    ]
+    return _submit_mleg(legs, qty, time_in_force)
+
+
+def place_strangle(
+    symbol: str,
+    expiry: date,
+    call_strike: float,
+    put_strike: float,
+    qty: int = 1,
+    time_in_force: str = "day",
+) -> dict:
+    """Buy a strangle: OTM call + OTM put at different strikes, same expiry."""
+    call_sym = build_option_symbol(symbol, expiry, "call", call_strike)
+    put_sym = build_option_symbol(symbol, expiry, "put", put_strike)
+    legs = [
+        _build_leg(call_sym, 1.0, "buy", "buy_to_open"),
+        _build_leg(put_sym, 1.0, "buy", "buy_to_open"),
+    ]
+    return _submit_mleg(legs, qty, time_in_force)
+
+
+# --- P&L Calculations ---
+
+def calculate_position_pnl(position: dict) -> dict:
+    """Calculate unrealized/realized/total P&L for a position dict.
+
+    Returns a dict with: unrealized_pnl, realized_pnl, total_pnl, pct_change,
+    market_value, cost_basis, avg_entry, current_price, qty, symbol.
+    """
+    qty = float(position.get("qty", 0))
+    avg_entry = float(position.get("avg_entry_price", 0))
+    current_price = float(position.get("current_price", 0) or 0)
+    market_value = float(position.get("market_value", 0) or current_price * qty)
+    cost_basis = float(position.get("cost_basis", 0) or avg_entry * qty)
+
+    unrealized_pnl = float(position.get("unrealized_pl", 0) or (market_value - cost_basis))
+    realized_pnl = 0.0  # Alpaca positions only show unrealized; realized tracked via snapshots
+    total_pnl = unrealized_pnl + realized_pnl
+    pct_change = float(position.get("unrealized_plpc", 0) or (unrealized_pnl / cost_basis if cost_basis else 0))
+
+    return {
+        "symbol": position.get("symbol", ""),
+        "qty": qty,
+        "avg_entry": avg_entry,
+        "current_price": current_price,
+        "market_value": market_value,
+        "cost_basis": cost_basis,
+        "unrealized_pnl": unrealized_pnl,
+        "realized_pnl": realized_pnl,
+        "total_pnl": total_pnl,
+        "pct_change": pct_change,
+    }
+
+
+async def take_position_snapshot() -> list[dict]:
+    """Fetch current positions and save a P&L snapshot to the database.
+
+    Returns the list of snapshots saved.
+    """
+    from alpaca_trader.core.database import save_position_snapshot
+
+    positions = get_positions()
+    snapshots = []
+    for pos in positions:
+        pnl = calculate_position_pnl(pos)
+        snapshot = {
+            "symbol": pnl["symbol"],
+            "qty": pnl["qty"],
+            "avg_entry": pnl["avg_entry"],
+            "current_price": pnl["current_price"],
+            "unrealized_pnl": pnl["unrealized_pnl"],
+            "realized_pnl": pnl["realized_pnl"],
+        }
+        await save_position_snapshot(snapshot)
+        snapshots.append(snapshot)
+    return snapshots
 
 
 # --- Historical Stock Data ---

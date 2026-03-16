@@ -238,6 +238,78 @@ class AlertConfig(BaseModel):
     notes: Optional[str] = None
 
 
+# --- Multi-Leg Order Models ---
+
+class SpreadType(str, Enum):
+    VERTICAL = "vertical"
+    CONDOR = "condor"
+    STRADDLE = "straddle"
+    STRANGLE = "strangle"
+
+
+class SpreadLeg(BaseModel):
+    symbol: str = Field(..., description="Option contract symbol")
+    ratio_qty: float = Field(1.0, description="Proportional quantity for this leg")
+    side: OrderSide
+    position_intent: str = Field(..., description="buy_to_open, buy_to_close, sell_to_open, sell_to_close")
+
+
+class SpreadOrderRequest(BaseModel):
+    leg1: SpreadLeg
+    leg2: SpreadLeg
+    qty: int = Field(1, gt=0)
+    time_in_force: TimeInForce = TimeInForce.DAY
+
+
+class IronCondorRequest(BaseModel):
+    legs: list[SpreadLeg] = Field(..., min_length=4, max_length=4)
+    qty: int = Field(1, gt=0)
+    time_in_force: TimeInForce = TimeInForce.DAY
+
+
+class StraddleRequest(BaseModel):
+    symbol: str
+    expiry: date
+    strike: float
+    qty: int = Field(1, gt=0)
+    time_in_force: TimeInForce = TimeInForce.DAY
+
+
+class StrangleRequest(BaseModel):
+    symbol: str
+    expiry: date
+    call_strike: float
+    put_strike: float
+    qty: int = Field(1, gt=0)
+    time_in_force: TimeInForce = TimeInForce.DAY
+
+
+# --- P&L Tracking Models ---
+
+class PositionSnapshot(BaseModel):
+    id: Optional[int] = None
+    symbol: str
+    timestamp: datetime
+    qty: float
+    avg_entry: float
+    current_price: float
+    unrealized_pnl: float
+    realized_pnl: float = 0.0
+
+
+class PositionPnL(BaseModel):
+    symbol: str
+    qty: float
+    avg_entry: float
+    current_price: float
+    unrealized_pnl: float
+    realized_pnl: float
+    total_pnl: float
+    pct_change: float
+    market_value: float
+    cost_basis: float
+
+
 # --- API Response Models ---
 
 class SuccessResponse(BaseModel):

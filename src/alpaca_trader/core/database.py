@@ -85,6 +85,24 @@ async def init_db() -> None:
             )
         """)
 
+        # Position P&L snapshots
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS position_snapshots (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                qty REAL NOT NULL,
+                avg_entry REAL NOT NULL,
+                current_price REAL NOT NULL,
+                unrealized_pnl REAL NOT NULL,
+                realized_pnl REAL NOT NULL DEFAULT 0.0
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_snapshots_symbol_time
+            ON position_snapshots (symbol, timestamp)
+        """)
+
         # App settings / key-value store
         await db.execute("""
             CREATE TABLE IF NOT EXISTS settings (
@@ -226,3 +244,87 @@ async def alert_list(symbol: Optional[str] = None, active_only: bool = True) -> 
         cursor = await db.execute(query, params)
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+# --- Position P&L Snapshot Operations ---
+
+async def save_position_snapshot(snapshot: dict) -> int:
+    """Save a single position snapshot. Returns the new row ID."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            """INSERT INTO position_snapshots
+               (symbol, qty, avg_entry, current_price, unrealized_pnl, realized_pnl)
+               VALUES (?, ?, ?, ?, ?, ?)""",
+            (
+                snapshot["symbol"].upper(),
+                snapshot["qty"],
+                snapshot["avg_entry"],
+                snapshot["current_price"],
+                snapshot["unrealized_pnl"],
+                snapshot.get("realized_pnl", 0.0),
+            ),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def get_pnl_history(symbol: str, days: int = 30) -> list[dict]:
+    """Get P&L snapshots for a symbol over the past N days."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute(
+            """SELECT * FROM position_snapshots
+               WHERE symbol = ?
+                 AND timestamp >= datetime('now', ? || ' days')
+               ORDER BY timestamp ASC""",
+            (symbol.upper(), f"-{days}"),
+        )
+        rows = await cursor.fetchall()
+        return [dict(row) for row in rows]
+
+
+async def get_portfolio_pnl_summary() -> dict:
+    """Get aggregate portfolio-level P&L stats from the latest snapshots per symbol."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        # Latest snapshot per symbol
+        cursor = await db.execute("""
+            SELECT s.*
+            FROM position_snapshots s
+            INNER JOIN (
+                SELECT symbol, MAX(timestamp) AS max_ts
+                FROM position_snapshots
+                GROUP BY symbol
+            ) latest ON s.symbol = latest.symbol AND s.timestamp = latest.max_ts
+        """)
+        rows = await cursor.fetchall()
+        snapshots = [dict(row) for row in rows]
+
+    if not snapshots:
+        return {
+            "total_unrealized_pnl": 0.0,
+            "total_realized_pnl": 0.0,
+            "total_pnl": 0.0,
+            "position_count": 0,
+            "winners": 0,
+            "losers": 0,
+            "win_rate": 0.0,
+            "positions": [],
+        }
+
+    total_unrealized = sum(s["unrealized_pnl"] for s in snapshots)
+    total_realized = sum(s["realized_pnl"] for s in snapshots)
+    winners = sum(1 for s in snapshots if s["unrealized_pnl"] > 0)
+    losers = sum(1 for s in snapshots if s["unrealized_pnl"] < 0)
+    total = winners + losers
+
+    return {
+        "total_unrealized_pnl": total_unrealized,
+        "total_realized_pnl": total_realized,
+        "total_pnl": total_unrealized + total_realized,
+        "position_count": len(snapshots),
+        "winners": winners,
+        "losers": losers,
+        "win_rate": winners / total if total > 0 else 0.0,
+        "positions": snapshots,
+    }

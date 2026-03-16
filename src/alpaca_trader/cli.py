@@ -116,9 +116,75 @@ def account(
 
 @app.command()
 def positions(
+    history: bool = typer.Option(False, "--history", help="Show P&L history over time per position"),
+    summary: bool = typer.Option(False, "--summary", help="Show portfolio-level P&L summary"),
+    days: int = typer.Option(30, "--days", help="Days of history to show (with --history)"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Show current open positions with P&L."""
+    asyncio.run(db.init_db())
+
+    if summary:
+        summary_data = asyncio.run(db.get_portfolio_pnl_summary())
+        if json_output:
+            _print_json(summary_data)
+            return
+
+        panel_lines = [
+            f"Positions: {summary_data['position_count']}  |  Winners: [green]{summary_data['winners']}[/green]  Losers: [red]{summary_data['losers']}[/red]  Win Rate: {summary_data['win_rate']*100:.1f}%"
+        ]
+        console.print(Panel("\n".join(panel_lines), title="Portfolio P&L Summary"))
+
+        t = Table(show_header=False, box=None)
+        t.add_column("Metric", style="dim", width=24)
+        t.add_column("Value")
+        t.add_row("Total Unrealized P&L", _fmt_decimal(summary_data["total_unrealized_pnl"]))
+        t.add_row("Total Realized P&L", _fmt_decimal(summary_data["total_realized_pnl"]))
+        t.add_row("Total P&L", _fmt_decimal(summary_data["total_pnl"]))
+        console.print(t)
+        return
+
+    if history:
+        try:
+            positions_data = alpaca.get_positions()
+        except EnvironmentError as e:
+            console.print(f"[red]Configuration error:[/red] {e}")
+            raise typer.Exit(1)
+        except Exception as e:
+            console.print(f"[red]API error:[/red] {e}")
+            raise typer.Exit(1)
+
+        symbols = [p.get("symbol") for p in positions_data if p.get("symbol")]
+        all_history = {}
+        for sym in symbols:
+            snaps = asyncio.run(db.get_pnl_history(sym, days=days))
+            all_history[sym] = snaps
+
+        if json_output:
+            _print_json(all_history)
+            return
+
+        for sym, snaps in all_history.items():
+            if not snaps:
+                console.print(f"[dim]{sym}: no history (run 'positions --snapshot' to record)[/dim]")
+                continue
+            table = Table(title=f"{sym} — P&L History ({days}d)")
+            table.add_column("Timestamp", style="dim")
+            table.add_column("Qty", justify="right")
+            table.add_column("Avg Entry", justify="right")
+            table.add_column("Price", justify="right")
+            table.add_column("Unrealized P&L", justify="right")
+            for snap in snaps:
+                table.add_row(
+                    str(snap.get("timestamp", "—"))[:19],
+                    str(snap.get("qty", "—")),
+                    _fmt_decimal(snap.get("avg_entry")),
+                    _fmt_decimal(snap.get("current_price")),
+                    _fmt_decimal(snap.get("unrealized_pnl")),
+                )
+            console.print(table)
+        return
+
     try:
         data = alpaca.get_positions()
     except EnvironmentError as e:
@@ -382,6 +448,96 @@ def buy_put(
     console.print(f"[green]Order placed:[/green] {order.get('id', '—')}")
     console.print(f"  Status: {order.get('status', '—')}")
     console.print(f"  Symbol: {order.get('symbol', symbol)}")
+
+
+# --- spread command ---
+
+@app.command()
+def spread(
+    ticker: str = typer.Argument(..., help="Underlying ticker symbol (e.g. AAPL)"),
+    spread_type: str = typer.Option(..., "--type", help="Spread type: vertical, condor, straddle, strangle"),
+    expiry: str = typer.Option(..., "--expiry", help="Expiration date (YYYY-MM-DD)"),
+    strike: float = typer.Option(None, "--strike", help="Strike price (required for vertical/straddle/strangle)"),
+    width: Optional[float] = typer.Option(None, "--width", help="Strike width in points (vertical/condor/strangle)"),
+    qty: int = typer.Option(1, "--qty", help="Number of contracts"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Place a multi-leg spread order (vertical, condor, straddle, strangle)."""
+    valid_types = ("vertical", "condor", "straddle", "strangle")
+    if spread_type not in valid_types:
+        console.print(f"[red]Invalid spread type.[/red] Choose from: {', '.join(valid_types)}")
+        raise typer.Exit(1)
+
+    try:
+        expiry_date = date.fromisoformat(expiry)
+    except ValueError:
+        console.print(f"[red]Invalid date format:[/red] {expiry} (use YYYY-MM-DD)")
+        raise typer.Exit(1)
+
+    try:
+        if spread_type == "straddle":
+            if strike is None:
+                console.print("[red]--strike is required for straddle[/red]")
+                raise typer.Exit(1)
+            console.print(f"Placing [cyan]straddle[/cyan] on {ticker.upper()} {expiry} @{strike} x{qty}...")
+            order = alpaca.place_straddle(ticker.upper(), expiry_date, strike, qty=qty)
+
+        elif spread_type == "strangle":
+            if strike is None or width is None:
+                console.print("[red]--strike (call strike) and --width (put strike distance) are required for strangle[/red]")
+                raise typer.Exit(1)
+            call_strike = strike
+            put_strike = strike - width
+            console.print(f"Placing [cyan]strangle[/cyan] on {ticker.upper()} {expiry} call@{call_strike} put@{put_strike} x{qty}...")
+            order = alpaca.place_strangle(ticker.upper(), expiry_date, call_strike, put_strike, qty=qty)
+
+        elif spread_type == "vertical":
+            if strike is None or width is None:
+                console.print("[red]--strike (long strike) and --width (spread width) are required for vertical[/red]")
+                raise typer.Exit(1)
+            long_strike = strike
+            short_strike = strike + width
+            long_sym = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", long_strike)
+            short_sym = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", short_strike)
+            console.print(f"Placing [cyan]vertical spread[/cyan]: buy {long_sym} / sell {short_sym} x{qty}...")
+            leg1 = {"symbol": long_sym, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"}
+            leg2 = {"symbol": short_sym, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"}
+            order = alpaca.place_spread_order(leg1, leg2, qty=qty)
+
+        elif spread_type == "condor":
+            if strike is None or width is None:
+                console.print("[red]--strike (lowest strike) and --width (wing width) are required for condor[/red]")
+                raise typer.Exit(1)
+            s1, s2, s3, s4 = strike, strike + width, strike + width * 2, strike + width * 3
+            put_buy = alpaca.build_option_symbol(ticker.upper(), expiry_date, "put", s1)
+            put_sell = alpaca.build_option_symbol(ticker.upper(), expiry_date, "put", s2)
+            call_sell = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", s3)
+            call_buy = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", s4)
+            console.print(f"Placing [cyan]iron condor[/cyan] on {ticker.upper()} {expiry}: {s1}/{s2}/{s3}/{s4} x{qty}...")
+            legs = [
+                {"symbol": put_buy, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"},
+                {"symbol": put_sell, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"},
+                {"symbol": call_sell, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"},
+                {"symbol": call_buy, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"},
+            ]
+            order = alpaca.place_iron_condor(legs, qty=qty)
+
+    except EnvironmentError as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Order failed:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        _print_json(order)
+        return
+
+    console.print(f"[green]Spread order placed:[/green] {order.get('id', '—')}")
+    console.print(f"  Status: {order.get('status', '—')}")
+    legs_data = order.get("legs") or []
+    for i, leg in enumerate(legs_data, 1):
+        console.print(f"  Leg {i}: {leg.get('symbol', '—')} {leg.get('side', '—')}")
 
 
 # --- cancel command ---
