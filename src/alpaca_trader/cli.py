@@ -16,6 +16,8 @@ from rich.text import Text
 
 from alpaca_trader.core import client as alpaca
 from alpaca_trader.core import database as db
+from alpaca_trader.strategies.scanner import WatchlistScanner
+from alpaca_trader.strategies.backtest import Backtester
 
 app = typer.Typer(
     name="alpaca-trader",
@@ -493,6 +495,171 @@ def watchlist_remove(
         console.print(f"[red]Removed[/red] {symbol.upper()} from watchlist")
     else:
         console.print(f"[yellow]{symbol.upper()} was not in the watchlist[/yellow]")
+
+
+# --- scan command ---
+
+@app.command()
+def scan(
+    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend"),
+    period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min, 5Min, 1Min"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Scan watchlist symbols with a Bollinger Band strategy."""
+    valid_strategies = ("squeeze", "bounce", "trend")
+    if strategy not in valid_strategies:
+        console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
+        raise typer.Exit(1)
+
+    asyncio.run(db.init_db())
+    watchlist_items = asyncio.run(db.watchlist_list())
+    symbols = [item["symbol"] for item in watchlist_items]
+
+    if not symbols:
+        msg = {"error": "Watchlist is empty. Add symbols with: alpaca-trader watchlist add TICKER"}
+        if json_output:
+            _print_json(msg)
+        else:
+            console.print("[yellow]Watchlist is empty.[/yellow] Add symbols with: alpaca-trader watchlist add TICKER")
+        raise typer.Exit(0)
+
+    try:
+        scanner = WatchlistScanner()
+        signals = scanner.scan(symbols, strategy=strategy, period=period)
+    except EnvironmentError as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Scan error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        _print_json([
+            {
+                "symbol": s.symbol,
+                "strategy": s.strategy,
+                "detected": s.detected,
+                "direction": s.direction,
+                "strength": s.strength,
+                "details": s.details,
+                "timestamp": s.timestamp,
+            }
+            for s in signals
+        ])
+        return
+
+    table = Table(title=f"Bollinger Scan: {strategy.upper()} ({len(signals)} symbols, {period})")
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Signal")
+    table.add_column("Direction")
+    table.add_column("Strength", justify="right")
+    table.add_column("Details")
+
+    for s in signals:
+        detected_str = "[green]YES[/green]" if s.detected else "[dim]no[/dim]"
+        direction_str = (
+            f"[green]{s.direction}[/green]" if s.direction == "long"
+            else f"[red]{s.direction}[/red]" if s.direction == "short"
+            else f"[dim]{s.direction}[/dim]"
+        )
+        strength_str = f"{s.strength:.2f}" if s.detected else "—"
+        detail_str = ", ".join(f"{k}={v}" for k, v in s.details.items()) if s.details else "—"
+
+        table.add_row(s.symbol, detected_str, direction_str, strength_str, detail_str)
+
+    console.print(table)
+
+
+# --- backtest command ---
+
+@app.command()
+def backtest(
+    ticker: str = typer.Argument(..., help="Ticker symbol to backtest"),
+    strategy: str = typer.Option(..., "--strategy", help="Strategy: squeeze, bounce, trend"),
+    start: str = typer.Option(..., "--start", help="Start date (YYYY-MM-DD)"),
+    end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)"),
+    capital: float = typer.Option(10000.0, "--capital", help="Initial capital (default $10,000)"),
+    period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Run a Bollinger Band strategy backtest on a ticker."""
+    valid_strategies = ("squeeze", "bounce", "trend")
+    if strategy not in valid_strategies:
+        console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
+        raise typer.Exit(1)
+
+    # Validate dates
+    try:
+        datetime.fromisoformat(start)
+        datetime.fromisoformat(end)
+    except ValueError as e:
+        console.print(f"[red]Invalid date:[/red] {e}")
+        raise typer.Exit(1)
+
+    try:
+        bt = Backtester()
+        result = bt.run(
+            symbol=ticker.upper(),
+            strategy=strategy,
+            start_date=start,
+            end_date=end,
+            initial_capital=capital,
+            period=period,
+        )
+    except EnvironmentError as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Backtest error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        import dataclasses
+        _print_json(dataclasses.asdict(result))
+        return
+
+    # Human-readable output
+    console.print(Panel(
+        f"[bold]{ticker.upper()}[/bold] — {strategy.upper()} strategy\n"
+        f"{start} → {end}  |  {result.num_trades} trades",
+        title="Backtest Result",
+    ))
+
+    summary = Table(show_header=False, box=None)
+    summary.add_column("Metric", style="dim", width=22)
+    summary.add_column("Value")
+
+    summary.add_row("Initial Capital", f"${result.initial_capital:,.2f}")
+    summary.add_row("Final Capital", f"${result.final_capital:,.2f}")
+    rtn_color = "green" if result.total_return >= 0 else "red"
+    summary.add_row("Total Return", f"[{rtn_color}]{result.total_return:+.2f}%[/{rtn_color}]")
+    summary.add_row("Win Rate", f"{result.win_rate*100:.1f}%")
+    summary.add_row("Sharpe Ratio", f"{result.sharpe:.3f}")
+    dd_color = "red" if result.max_drawdown < -5 else "yellow" if result.max_drawdown < 0 else "green"
+    summary.add_row("Max Drawdown", f"[{dd_color}]{result.max_drawdown:.2f}%[/{dd_color}]")
+    console.print(summary)
+
+    if result.trades:
+        console.print(f"\n[dim]Last 5 trades:[/dim]")
+        trade_table = Table()
+        trade_table.add_column("Entry Date", style="dim")
+        trade_table.add_column("Exit Date", style="dim")
+        trade_table.add_column("Dir")
+        trade_table.add_column("Entry", justify="right")
+        trade_table.add_column("Exit", justify="right")
+        trade_table.add_column("P&L %", justify="right")
+
+        for t in result.trades[-5:]:
+            pnl_color = "green" if t.pnl_pct >= 0 else "red"
+            trade_table.add_row(
+                t.entry_date[:10],
+                t.exit_date[:10],
+                f"[green]{t.direction}[/green]" if t.direction == "long" else f"[red]{t.direction}[/red]",
+                f"${t.entry_price:.2f}",
+                f"${t.exit_price:.2f}",
+                f"[{pnl_color}]{t.pnl_pct:+.2f}%[/{pnl_color}]",
+            )
+        console.print(trade_table)
 
 
 # --- serve command ---
