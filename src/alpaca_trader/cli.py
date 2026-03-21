@@ -18,6 +18,8 @@ from alpaca_trader.core import client as alpaca
 from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
 from alpaca_trader.strategies.backtest import Backtester
+from alpaca_trader.alerts.checker import AlertChecker
+from alpaca_trader.alerts.scanner import ScheduledScanner
 
 app = typer.Typer(
     name="alpaca-trader",
@@ -816,6 +818,222 @@ def backtest(
                 f"[{pnl_color}]{t.pnl_pct:+.2f}%[/{pnl_color}]",
             )
         console.print(trade_table)
+
+
+# --- alert command group ---
+
+alert_app = typer.Typer(help="Manage price and strategy alerts")
+app.add_typer(alert_app, name="alert")
+
+
+@alert_app.command("list")
+def alert_list(
+    status: Optional[str] = typer.Option(None, "--status", help="Filter: active, triggered, dismissed"),
+    alert_type: Optional[str] = typer.Option(None, "--type", help="Filter by type"),
+    symbol: Optional[str] = typer.Option(None, "--symbol", help="Filter by symbol"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """List alerts."""
+    asyncio.run(db.init_db())
+    items = asyncio.run(db.alerts_list(status=status, alert_type=alert_type, symbol=symbol))
+
+    if json_output:
+        _print_json(items)
+        return
+
+    if not items:
+        console.print("[dim]No alerts found.[/dim]")
+        return
+
+    table = Table(title=f"Alerts ({len(items)})")
+    table.add_column("ID", style="dim", width=5)
+    table.add_column("Type", style="cyan")
+    table.add_column("Symbol", style="bold")
+    table.add_column("Condition")
+    table.add_column("Status")
+    table.add_column("Message")
+    table.add_column("Created")
+
+    for item in items:
+        condition = item.get("condition", {})
+        cond_str = ", ".join(f"{k}={v}" for k, v in condition.items()) if condition else "—"
+        status_val = item.get("status", "—")
+        status_styled = (
+            f"[green]{status_val}[/green]" if status_val == "active"
+            else f"[yellow]{status_val}[/yellow]" if status_val == "triggered"
+            else f"[dim]{status_val}[/dim]"
+        )
+        table.add_row(
+            str(item.get("id", "—")),
+            item.get("alert_type", "—"),
+            item.get("symbol", "—"),
+            cond_str,
+            status_styled,
+            item.get("message") or "—",
+            str(item.get("created_at", "—"))[:19],
+        )
+
+    console.print(table)
+
+
+@alert_app.command("add")
+def alert_add_cmd(
+    alert_type: str = typer.Argument(..., help="Alert type: pnl, expiry, price, squeeze, signal, fill"),
+    symbol: str = typer.Argument(..., help="Ticker symbol"),
+    threshold: Optional[float] = typer.Option(None, "--threshold", help="P&L threshold % (for pnl type)"),
+    days: Optional[int] = typer.Option(None, "--days", help="Days to expiry (for expiry type)"),
+    target: Optional[float] = typer.Option(None, "--target", help="Price target (for price type)"),
+    direction: str = typer.Option("above", "--direction", help="Price direction: above, below"),
+    strategy: str = typer.Option("bounce", "--strategy", help="Strategy for signal type: bounce, trend"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Add an alert. Types: pnl, expiry, price, squeeze, signal, fill."""
+    valid_types = ("pnl", "expiry", "price", "squeeze", "signal", "fill")
+    if alert_type not in valid_types:
+        console.print(f"[red]Invalid alert type.[/red] Choose from: {', '.join(valid_types)}")
+        raise typer.Exit(1)
+
+    condition: dict = {}
+    if alert_type == "pnl":
+        if threshold is None:
+            console.print("[red]--threshold required for pnl alert[/red]")
+            raise typer.Exit(1)
+        condition = {"threshold": threshold}
+    elif alert_type == "expiry":
+        condition = {"days": days or 7}
+    elif alert_type == "price":
+        if target is None:
+            console.print("[red]--target required for price alert[/red]")
+            raise typer.Exit(1)
+        condition = {"target_price": target, "direction": direction}
+    elif alert_type == "signal":
+        condition = {"strategy": strategy}
+    elif alert_type in ("squeeze", "fill"):
+        condition = {}
+
+    asyncio.run(db.init_db())
+    alert_id = asyncio.run(db.alerts_add(alert_type, symbol.upper(), condition))
+
+    result = {"id": alert_id, "alert_type": alert_type, "symbol": symbol.upper(), "condition": condition}
+    if json_output:
+        _print_json(result)
+        return
+
+    console.print(f"[green]Alert #{alert_id} created:[/green] {alert_type} on {symbol.upper()}")
+    if condition:
+        console.print(f"  Condition: {', '.join(f'{k}={v}' for k, v in condition.items())}")
+
+
+@alert_app.command("dismiss")
+def alert_dismiss(
+    alert_id: int = typer.Argument(..., help="Alert ID to dismiss"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Dismiss an alert by ID."""
+    asyncio.run(db.init_db())
+    ok = asyncio.run(db.alerts_dismiss(alert_id))
+
+    result = {"success": ok, "id": alert_id}
+    if json_output:
+        _print_json(result)
+        return
+
+    if ok:
+        console.print(f"[green]Alert #{alert_id} dismissed.[/green]")
+    else:
+        console.print(f"[yellow]Alert #{alert_id} not found.[/yellow]")
+
+
+@alert_app.command("check")
+def alert_check(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Run alert check now and show triggered alerts."""
+    asyncio.run(db.init_db())
+    try:
+        checker = AlertChecker()
+        triggered = asyncio.run(checker.check_all())
+    except EnvironmentError as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Check error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        _print_json(triggered)
+        return
+
+    if not triggered:
+        console.print("[dim]No alerts triggered.[/dim]")
+        return
+
+    console.print(f"[yellow]🔔 {len(triggered)} alert(s) triggered:[/yellow]")
+    for a in triggered:
+        console.print(f"  [cyan]#{a['id']}[/cyan] {a.get('message', '—')}")
+
+
+# --- monitor command group ---
+
+monitor_app = typer.Typer(help="Monitor market and run scheduled scans")
+app.add_typer(monitor_app, name="monitor")
+
+
+@monitor_app.command("run")
+def monitor_run(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Run full scan + alert check (one-shot)."""
+    asyncio.run(db.init_db())
+    try:
+        scanner = ScheduledScanner()
+        results = asyncio.run(scanner.run())
+    except EnvironmentError as e:
+        console.print(f"[red]Configuration error:[/red] {e}")
+        raise typer.Exit(1)
+    except Exception as e:
+        console.print(f"[red]Monitor error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        _print_json(results)
+        return
+
+    console.print(Panel(
+        f"Scanned [cyan]{results['symbols_scanned']}[/cyan] symbols\n"
+        f"Started: {results['started_at'][:19]}  Completed: {results['completed_at'][:19]}",
+        title="Monitor Run",
+    ))
+    console.print(results.get("summary", ""))
+
+
+@monitor_app.command("status")
+def monitor_status(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show last scan time and active alert count."""
+    asyncio.run(db.init_db())
+    last_run = asyncio.run(db.setting_get("monitor_last_run"))
+    last_count = asyncio.run(db.setting_get("monitor_last_triggered_count"))
+    active_alerts = asyncio.run(db.alerts_list(status="active"))
+
+    result = {
+        "last_run": last_run or "never",
+        "last_triggered_count": int(last_count or 0),
+        "active_alerts": len(active_alerts),
+    }
+
+    if json_output:
+        _print_json(result)
+        return
+
+    t = Table(title="Monitor Status", show_header=False, box=None)
+    t.add_column("Field", style="dim", width=24)
+    t.add_column("Value")
+    t.add_row("Last Run", last_run or "[dim]never[/dim]")
+    t.add_row("Last Triggered", str(last_count or 0))
+    t.add_row("Active Alerts", str(len(active_alerts)))
+    console.print(t)
 
 
 # --- serve command ---

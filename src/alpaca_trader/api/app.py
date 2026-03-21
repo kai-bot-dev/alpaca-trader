@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 
 from alpaca_trader.core.database import init_db
 from alpaca_trader.api.routes import account, orders, options
+from alpaca_trader.api.routes import alerts, monitor
 
 load_dotenv()
 
@@ -43,6 +44,8 @@ app.add_middleware(
 app.include_router(account.router, prefix="/api/account", tags=["account"])
 app.include_router(orders.router, prefix="/api/orders", tags=["orders"])
 app.include_router(options.router, prefix="/api/options", tags=["options"])
+app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(monitor.router, prefix="/api/monitor", tags=["monitor"])
 
 
 @app.get("/health")

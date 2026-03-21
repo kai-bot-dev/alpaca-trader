@@ -112,6 +112,24 @@ async def init_db() -> None:
             )
         """)
 
+        # Sprint 5: Alerts table (richer schema with condition_json and message)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS alerts (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                alert_type TEXT NOT NULL,
+                symbol TEXT NOT NULL,
+                condition_json TEXT NOT NULL DEFAULT '{}',
+                status TEXT NOT NULL DEFAULT 'active',
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                triggered_at TIMESTAMP,
+                message TEXT
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alerts_status
+            ON alerts (status)
+        """)
+
         await db.commit()
 
 
@@ -281,6 +299,118 @@ async def get_pnl_history(symbol: str, days: int = 30) -> list[dict]:
         )
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
+
+
+async def setting_get(key: str) -> Optional[str]:
+    """Get a setting value by key."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT value FROM settings WHERE key = ?", (key,))
+        row = await cursor.fetchone()
+        return row["value"] if row else None
+
+
+async def setting_set(key: str, value: str) -> None:
+    """Set a setting value (upsert)."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            """INSERT INTO settings (key, value) VALUES (?, ?)
+               ON CONFLICT(key) DO UPDATE SET value=excluded.value, updated_at=CURRENT_TIMESTAMP""",
+            (key, value),
+        )
+        await db.commit()
+
+
+# --- Sprint 5: Alerts Operations ---
+
+async def alerts_add(
+    alert_type: str,
+    symbol: str,
+    condition: dict,
+    message: Optional[str] = None,
+) -> int:
+    """Add an alert. Returns the new alert ID."""
+    import json
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            """INSERT INTO alerts (alert_type, symbol, condition_json, status, message)
+               VALUES (?, ?, ?, 'active', ?)""",
+            (alert_type, symbol.upper(), json.dumps(condition), message),
+        )
+        await db.commit()
+        return cursor.lastrowid
+
+
+async def alerts_list(
+    status: Optional[str] = "active",
+    alert_type: Optional[str] = None,
+    symbol: Optional[str] = None,
+) -> list[dict]:
+    """List alerts with optional filters."""
+    import json
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        query = "SELECT * FROM alerts WHERE 1=1"
+        params: list = []
+        if status:
+            query += " AND status = ?"
+            params.append(status)
+        if alert_type:
+            query += " AND alert_type = ?"
+            params.append(alert_type)
+        if symbol:
+            query += " AND symbol = ?"
+            params.append(symbol.upper())
+        query += " ORDER BY created_at DESC"
+        cursor = await db.execute(query, params)
+        rows = await cursor.fetchall()
+        result = []
+        for row in rows:
+            d = dict(row)
+            try:
+                d["condition"] = json.loads(d.pop("condition_json", "{}"))
+            except Exception:
+                d["condition"] = {}
+            result.append(d)
+        return result
+
+
+async def alerts_get(alert_id: int) -> Optional[dict]:
+    """Get a single alert by ID."""
+    import json
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        db.row_factory = aiosqlite.Row
+        cursor = await db.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,))
+        row = await cursor.fetchone()
+        if not row:
+            return None
+        d = dict(row)
+        try:
+            d["condition"] = json.loads(d.pop("condition_json", "{}"))
+        except Exception:
+            d["condition"] = {}
+        return d
+
+
+async def alerts_dismiss(alert_id: int) -> bool:
+    """Dismiss an alert (set status='dismissed'). Returns True if found."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        cursor = await db.execute(
+            "UPDATE alerts SET status='dismissed' WHERE id = ?", (alert_id,)
+        )
+        await db.commit()
+        return cursor.rowcount > 0
+
+
+async def alerts_mark_triggered(alert_id: int, message: str) -> None:
+    """Mark an alert as triggered with a message."""
+    async with aiosqlite.connect(DATABASE_URL) as db:
+        await db.execute(
+            """UPDATE alerts SET status='triggered', triggered_at=CURRENT_TIMESTAMP, message=?
+               WHERE id = ?""",
+            (message, alert_id),
+        )
+        await db.commit()
 
 
 async def get_portfolio_pnl_summary() -> dict:

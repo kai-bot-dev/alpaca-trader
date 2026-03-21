@@ -44,3 +44,32 @@ export const addToWatchlist = (symbol: string) =>
 
 export const removeFromWatchlist = (symbol: string) =>
   request<Record<string, unknown>>(`/watchlist/${symbol}`, { method: 'DELETE' })
+
+// --- Alerts ---
+
+export const getAlerts = (params?: { status?: string; alert_type?: string; symbol?: string }) => {
+  const qs = params
+    ? '?' + Object.entries(params).filter(([, v]) => v).map(([k, v]) => `${k}=${encodeURIComponent(v!)}`).join('&')
+    : ''
+  return request<Record<string, unknown>[]>(`/alerts${qs}`)
+}
+
+export const createAlert = (data: { alert_type: string; symbol: string; condition: Record<string, unknown>; message?: string }) =>
+  request<Record<string, unknown>>('/alerts', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  })
+
+export const dismissAlert = (id: number) =>
+  request<Record<string, unknown>>(`/alerts/${id}`, { method: 'DELETE' })
+
+export const checkAlerts = () =>
+  request<Record<string, unknown>>('/alerts/check', { method: 'POST' })
+
+// --- Monitor ---
+
+export const getMonitorStatus = () =>
+  request<Record<string, unknown>>('/monitor/status')
+
+export const runMonitor = () =>
+  request<Record<string, unknown>>('/monitor/run', { method: 'POST' })
