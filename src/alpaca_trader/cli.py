@@ -19,6 +19,8 @@ from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
 from alpaca_trader.strategies.backtest import Backtester
 from alpaca_trader.alerts.checker import AlertChecker
+from alpaca_trader.alerts.delivery import TelegramDeliveryQueue
+from alpaca_trader.alerts.formatter import format_alert_telegram
 from alpaca_trader.alerts.scanner import ScheduledScanner
 
 app = typer.Typer(
@@ -971,6 +973,102 @@ def alert_check(
     console.print(f"[yellow]🔔 {len(triggered)} alert(s) triggered:[/yellow]")
     for a in triggered:
         console.print(f"  [cyan]#{a['id']}[/cyan] {a.get('message', '—')}")
+
+
+@alert_app.command("send-test")
+def alert_send_test(
+    symbol: str = typer.Option("AAPL", "--symbol", help="Symbol for the test alert"),
+    alert_type: str = typer.Option("price", "--type", help="Alert type for the test alert"),
+    severity: str = typer.Option("info", "--severity", help="Severity: info, warning, critical"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Queue a test alert to verify the delivery pipeline."""
+    test_alert = {
+        "id": "test-0",
+        "alert_type": alert_type,
+        "symbol": symbol.upper(),
+        "message": f"Test alert: {alert_type} on {symbol.upper()}",
+        "status": "triggered",
+    }
+    context: dict = {}
+    if alert_type == "price":
+        context = {"price": "150.00", "target": "148.00"}
+    elif alert_type == "pnl":
+        context = {"pct": "5.2", "value": "260.00"}
+    elif alert_type == "fill":
+        context = {"side": "buy", "qty": "1", "price": "150.00"}
+    elif alert_type == "expiry":
+        context = {"days": "3", "value": "-45.00"}
+    elif alert_type == "squeeze":
+        context = {"width": "0.042"}
+    elif alert_type == "signal":
+        context = {"strategy": "bounce", "direction": "bullish", "score": "0.78"}
+
+    delivery = TelegramDeliveryQueue()
+    queue_id = delivery.queue_alert(test_alert, context=context, severity=severity)
+    formatted = format_alert_telegram({**test_alert, "context": context, "severity": severity})
+
+    result = {"queue_id": queue_id, "text": formatted}
+    if json_output:
+        _print_json(result)
+        return
+
+    console.print(f"[green]Test alert queued[/green] (id: {queue_id})")
+    console.print(f"  Message: {formatted}")
+
+
+@alert_app.command("queue")
+def alert_queue_cmd(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    all_alerts: bool = typer.Option(False, "--all", help="Show delivered alerts too"),
+):
+    """Show pending alerts in the delivery queue."""
+    from alpaca_trader.alerts.delivery import _load_queue  # type: ignore[attr-defined]
+
+    queue = _load_queue()
+    if not all_alerts:
+        queue = [e for e in queue if not e.get("delivered")]
+
+    if json_output:
+        _print_json(queue)
+        return
+
+    if not queue:
+        console.print("[dim]No pending alerts in queue.[/dim]")
+        return
+
+    table = Table(title=f"Alert Queue ({len(queue)})")
+    table.add_column("Queue ID", style="dim", width=8)
+    table.add_column("Alert ID", style="dim", width=8)
+    table.add_column("Type", style="cyan")
+    table.add_column("Symbol", style="bold")
+    table.add_column("Severity")
+    table.add_column("Message")
+    table.add_column("Triggered At")
+    table.add_column("Delivered")
+
+    for entry in queue:
+        queue_id_short = str(entry.get("queue_id", ""))[:8]
+        delivered = entry.get("delivered", False)
+        delivered_str = "[green]yes[/green]" if delivered else "[yellow]pending[/yellow]"
+        severity = entry.get("severity", "info")
+        sev_styled = (
+            f"[red]{severity}[/red]" if severity == "critical"
+            else f"[yellow]{severity}[/yellow]" if severity == "warning"
+            else f"[dim]{severity}[/dim]"
+        )
+        table.add_row(
+            queue_id_short,
+            str(entry.get("alert_id", "—")),
+            entry.get("alert_type", "—"),
+            entry.get("symbol", "—"),
+            sev_styled,
+            entry.get("message", "—")[:60],
+            str(entry.get("triggered_at", "—"))[:19],
+            delivered_str,
+        )
+
+    console.print(table)
 
 
 # --- monitor command group ---

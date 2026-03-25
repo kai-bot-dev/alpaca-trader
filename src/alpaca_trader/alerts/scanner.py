@@ -3,6 +3,7 @@
 from datetime import datetime
 
 from alpaca_trader.alerts.checker import AlertChecker
+from alpaca_trader.alerts.delivery import TelegramDeliveryQueue
 from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
 
@@ -22,7 +23,13 @@ class ScheduledScanner:
         checker = AlertChecker()
         triggered_alerts = await checker.check_all()
 
-        # 2. Scan watchlist with all strategies
+        # 2a. Queue triggered alerts for Telegram delivery
+        if triggered_alerts:
+            delivery = TelegramDeliveryQueue()
+            for alert in triggered_alerts:
+                delivery.queue_alert(alert, context=alert.get("condition") or {})
+
+        # 2b. Scan watchlist with all strategies
         watchlist_items = await db.watchlist_list()
         symbols = [item["symbol"] for item in watchlist_items]
 

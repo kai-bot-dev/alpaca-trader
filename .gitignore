@@ -45,3 +45,6 @@ frontend/dist/
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Alert queue
+data/alert-queue.json
