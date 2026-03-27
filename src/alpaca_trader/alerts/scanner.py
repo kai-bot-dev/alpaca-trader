@@ -1,6 +1,6 @@
 """ScheduledScanner — runs AlertChecker + watchlist scan and returns formatted results."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from alpaca_trader.alerts.checker import AlertChecker
 from alpaca_trader.alerts.delivery import TelegramDeliveryQueue
@@ -17,7 +17,7 @@ class ScheduledScanner:
 
     async def run(self) -> dict:
         """Execute full scan. Returns results dict."""
-        started_at = datetime.utcnow().isoformat()
+        started_at = datetime.now(timezone.utc).isoformat()
 
         # 1. Check active alerts
         checker = AlertChecker()
@@ -54,7 +54,7 @@ class ScheduledScanner:
             except Exception as e:
                 strategy_signals = [{"error": str(e)}]
 
-        completed_at = datetime.utcnow().isoformat()
+        completed_at = datetime.now(timezone.utc).isoformat()
 
         # 3. Store last scan time
         await db.setting_set("monitor_last_run", completed_at)

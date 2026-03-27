@@ -1,7 +1,7 @@
 """SQLite database setup and operations for alpaca-trader."""
 
 import os
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
@@ -205,7 +205,7 @@ async def upsert_order(order_data: dict) -> None:
             order_data.get("canceled_at"),
             order_data.get("asset_class"),
             json.dumps(order_data),
-            datetime.utcnow().isoformat(),
+            datetime.now(timezone.utc).isoformat(),
         ))
         await db.commit()
 

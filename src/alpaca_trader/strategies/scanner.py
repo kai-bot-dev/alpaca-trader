@@ -1,7 +1,7 @@
 """Watchlist scanner — runs a strategy across all symbols in the watchlist."""
 
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 
 import pandas as pd
@@ -66,7 +66,7 @@ class WatchlistScanner:
         period: str,
         limit: int,
     ) -> Signal:
-        timestamp = datetime.utcnow().isoformat()
+        timestamp = datetime.now(timezone.utc).isoformat()
         try:
             df = alpaca.get_stock_bars_df(symbol, period=period, limit=limit)
         except EnvironmentError:

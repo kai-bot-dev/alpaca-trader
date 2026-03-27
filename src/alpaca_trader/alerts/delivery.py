@@ -3,7 +3,7 @@
 import json
 import os
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 _QUEUE_FILE = Path(__file__).resolve().parents[3] / "data" / "alert-queue.json"
@@ -51,7 +51,7 @@ class TelegramDeliveryQueue:
             "symbol": alert.get("symbol", ""),
             "message": alert.get("message", ""),
             "severity": severity,
-            "triggered_at": alert.get("triggered_at") or datetime.utcnow().isoformat(),
+            "triggered_at": alert.get("triggered_at") or datetime.now(timezone.utc).isoformat(),
             "context": context or {},
             "delivered": False,
         }
@@ -73,7 +73,7 @@ class TelegramDeliveryQueue:
         for entry in queue:
             if entry.get("queue_id") in id_set and not entry.get("delivered"):
                 entry["delivered"] = True
-                entry["delivered_at"] = datetime.utcnow().isoformat()
+                entry["delivered_at"] = datetime.now(timezone.utc).isoformat()
                 updated += 1
         _save_queue(queue)
         return updated

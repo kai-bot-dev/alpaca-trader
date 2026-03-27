@@ -21,7 +21,7 @@ class AlertChecker:
                 await db.alerts_mark_triggered(alert["id"], result)
                 alert["message"] = result
                 alert["status"] = "triggered"
-                alert["triggered_at"] = datetime.utcnow().isoformat()
+                alert["triggered_at"] = datetime.now(timezone.utc).isoformat()
                 triggered.append(alert)
         return triggered
 
