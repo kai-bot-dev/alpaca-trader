@@ -24,8 +24,8 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - [ ] Add integration test: full scan → signal → auto-trade pipeline (mocked API)
 - [ ] Improve logging: add structured logging (JSON) throughout the trading pipeline
 - [ ] Add type hints to all public functions that are missing them
-- [ ] Create a health check endpoint in FastAPI (/api/health) with system status
-- [ ] Add docstrings to all strategy detector classes
+- [x] Create a health check endpoint in FastAPI (/api/health) with system status (2026-03-28)
+- [x] Add docstrings to all strategy detector classes (2026-03-28)
 - [ ] Refactor scanner.py to use async properly (currently blocking in sync scan loop)
 
 ### Low Priority
@@ -59,3 +59,18 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
   - Exponential backoff: 100ms → 200ms → 400ms → 800ms (capped at 10s)
   - Configurable max retries, initial backoff, multiplier
   - Both sync and async versions available
+
+- ✅ Add unit tests for strategy detectors (2026-03-28)
+  - Created tests/test_strategies.py with 34 tests covering all 4 strategy classes
+  - Uses synthetic OHLCV data (numpy/pandas) with controllable volatility, trend, and seed
+  - Tests: BollingerBands (10), SqueezeDetector (8), BounceDetector (7), TrendDetector (9)
+  - All tests pass
+
+- ✅ Create health check endpoint /api/health (2026-03-28)
+  - Added src/alpaca_trader/api/routes/health.py
+  - Returns status, version, timestamp, database connectivity, services
+  - Registered in app.py
+
+- ✅ Add docstrings to all strategy detector classes (2026-03-28)
+  - Enhanced class-level Google-style docstrings for BollingerBands, SqueezeDetector, BounceDetector, TrendDetector
+  - Added Attributes sections and Example usage snippets

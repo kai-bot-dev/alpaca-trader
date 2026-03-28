@@ -7,9 +7,23 @@ import pandas as pd
 class BollingerBands:
     """Calculates Bollinger Bands for OHLCV price data.
 
-    Parameters:
-        period: Rolling window for SMA/std (default 20)
-        std_dev: Number of standard deviations for bands (default 2.0)
+    Bollinger Bands consist of a middle band (SMA), an upper band
+    (SMA + k*std), and a lower band (SMA - k*std). They are used to
+    measure volatility and identify overbought/oversold conditions.
+
+    Attributes:
+        period: Rolling window size for the SMA and standard deviation
+            calculation. Default is 20.
+        std_dev: Number of standard deviations for the upper and lower
+            bands. Default is 2.0.
+
+    Example:
+        >>> import pandas as pd
+        >>> from alpaca_trader.strategies.bollinger import BollingerBands
+        >>> bb = BollingerBands(period=20, std_dev=2.0)
+        >>> df = pd.DataFrame({'close': [100 + i * 0.5 for i in range(30)]})
+        >>> result = bb.calc(df)
+        >>> print(result[['bb_middle', 'bb_upper', 'bb_lower']].tail())
     """
 
     def __init__(self, period: int = 20, std_dev: float = 2.0):

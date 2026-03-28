@@ -20,8 +20,30 @@ class SqueezeSignal:
 class SqueezeDetector:
     """Detects Bollinger Band squeeze (breakout setup).
 
-    A squeeze is when BB width contracts below a threshold AND then price
-    closes outside the band with volume confirmation.
+    A squeeze occurs when Bollinger Band width contracts below a threshold,
+    indicating low volatility. When price then closes outside the band with
+    volume confirmation, it signals a potential breakout.
+
+    The detection pipeline:
+    1. Check if BB width < threshold (squeeze active)
+    2. Check if latest close is outside upper or lower band
+    3. Confirm with volume spike (current vol > 1.5x 20-bar avg)
+    4. Determine direction (long if above upper, short if below lower)
+
+    Attributes:
+        bb: BollingerBands instance used for band calculations.
+
+    Example:
+        >>> import pandas as pd
+        >>> from alpaca_trader.strategies.squeeze import SqueezeDetector
+        >>> detector = SqueezeDetector(bb_period=20, bb_std_dev=2.0)
+        >>> df = pd.DataFrame({
+        ...     'close': [...],  # OHLCV data
+        ...     'volume': [...]
+        ... })
+        >>> signal = detector.detect(df, threshold=0.05)
+        >>> if signal.detected and signal.direction == 'long':
+        ...     print(f'Squeeze breakout long, strength={signal.strength:.2f}')
     """
 
     def __init__(self, bb_period: int = 20, bb_std_dev: float = 2.0):

@@ -29,10 +29,31 @@ def _calc_macd(close: pd.Series,
 
 
 class TrendDetector:
-    """Detects 'walking the bands' — sustained price action along an outer BB.
+    """Detects 'walking the bands' -- sustained price action along an outer BB.
 
-    Uses MACD to confirm trend direction and strength.
-    Looks back N candles to see if price consistently hugs the upper or lower band.
+    Identifies when price consistently hugs the upper or lower Bollinger Band,
+    indicating a strong directional trend. Uses MACD histogram to confirm
+    trend direction and filter false signals.
+
+    Detection criteria:
+    1. At least 60% of the last N candles close above (long) or below (short)
+       the middle band
+    2. MACD histogram confirms direction (positive for long, negative for short)
+
+    Attributes:
+        bb: BollingerBands instance for band calculations.
+        lookback: Number of recent candles to check for band-walking. Default is 5.
+        macd_fast: Fast EMA period for MACD. Default is 12.
+        macd_slow: Slow EMA period for MACD. Default is 26.
+        macd_signal_period: Signal line EMA period. Default is 9.
+
+    Example:
+        >>> from alpaca_trader.strategies.trend import TrendDetector
+        >>> detector = TrendDetector(bb_period=20, lookback=5)
+        >>> signal = detector.detect(ohlcv_dataframe)
+        >>> if signal.detected:
+        ...     print(f'Trend {signal.direction}, strength={signal.strength:.2f}')
+        ...     print(f'MACD histogram={signal.macd_hist:.4f}')
     """
 
     def __init__(self, bb_period: int = 20, bb_std_dev: float = 2.0,

@@ -65,8 +65,27 @@ def _calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
 class BounceDetector:
     """Detects Bollinger Bounce (mean reversion) signals.
 
-    Signals when price touches the lower or upper band in a range-bound market
-    (ADX < 25). Confirmed by RSI being oversold/overbought.
+    Identifies opportunities where price reverts to the mean after touching
+    the outer Bollinger Bands. This strategy works best in range-bound markets
+    where price oscillates between support and resistance.
+
+    Detection criteria:
+    1. Market must be range-bound (ADX < 25)
+    2. Price touches or crosses a Bollinger Band
+    3. RSI confirms oversold (< 35 for long) or overbought (> 65 for short)
+
+    Attributes:
+        bb: BollingerBands instance for band calculations.
+        rsi_period: Lookback period for RSI calculation. Default is 14.
+        adx_period: Lookback period for ADX calculation. Default is 14.
+
+    Example:
+        >>> from alpaca_trader.strategies.bounce import BounceDetector
+        >>> detector = BounceDetector(bb_period=20, rsi_period=14, adx_period=14)
+        >>> signal = detector.detect(ohlcv_dataframe)
+        >>> if signal.detected:
+        ...     print(f'{signal.direction} bounce at {signal.band_touched} band')
+        ...     print(f'RSI={signal.rsi:.1f}, ADX={signal.adx:.1f}')
     """
 
     def __init__(self, bb_period: int = 20, bb_std_dev: float = 2.0,
