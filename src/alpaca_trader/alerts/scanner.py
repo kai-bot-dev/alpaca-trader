@@ -37,7 +37,7 @@ class ScheduledScanner:
         if symbols:
             scanner = WatchlistScanner()
             try:
-                for strategy in ("squeeze", "bounce", "trend"):
+                for strategy in ("squeeze", "bounce", "trend", "bb_rsi_reversal"):
                     signals = scanner.scan(symbols, strategy=strategy)
                     for sig in signals:
                         if sig.detected:

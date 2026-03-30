@@ -13,6 +13,7 @@ from alpaca_trader.strategies.bollinger import BollingerBands
 from alpaca_trader.strategies.squeeze import SqueezeDetector
 from alpaca_trader.strategies.bounce import BounceDetector
 from alpaca_trader.strategies.trend import TrendDetector
+from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector
 
 
 @dataclass
@@ -147,6 +148,7 @@ class Backtester:
         entry_idx = None
         entry_price = None
         direction = "none"
+        entry_middle = None   # middle band at entry (used by bb_rsi_reversal exit)
         min_rows = 25
 
         bb = BollingerBands()
@@ -165,9 +167,23 @@ class Backtester:
                     entry_idx = i
                     entry_price = close
                     direction = sig_direction
+                    # Record middle band at entry for bb_rsi_reversal stop calc
+                    if strategy == "bb_rsi_reversal":
+                        try:
+                            enriched = BollingerBands().calc(window)
+                            entry_middle = float(enriched.iloc[-1]["bb_middle"])
+                        except Exception:
+                            entry_middle = None
+                    else:
+                        entry_middle = None
             else:
                 # Check for exit
-                should_exit = self._check_exit(window, strategy, direction)
+                bars_in_trade = i - entry_idx
+                should_exit = self._check_exit(
+                    window, strategy, direction,
+                    entry_price=entry_price, entry_middle=entry_middle,
+                    bars_in_trade=bars_in_trade,
+                )
                 if should_exit or i == len(df) - 1:
                     exit_price = close
                     pnl_pct = ((exit_price - entry_price) / entry_price * 100
@@ -187,6 +203,7 @@ class Backtester:
                     in_trade = False
                     entry_idx = None
                     entry_price = None
+                    entry_middle = None
                     direction = "none"
 
         return trades
@@ -203,12 +220,35 @@ class Backtester:
             elif strategy == "trend":
                 sig = TrendDetector().detect(df)
                 return sig.detected, sig.direction
+            elif strategy == "bb_rsi_reversal":
+                sig = BBRSIReversalDetector().detect(df)
+                return sig.detected, sig.direction
         except Exception:
             pass
         return False, "none"
 
-    def _check_exit(self, df: pd.DataFrame, strategy: str, direction: str) -> bool:
-        """Check exit condition based on strategy rules."""
+    def _check_exit(
+        self,
+        df: pd.DataFrame,
+        strategy: str,
+        direction: str,
+        entry_price: float | None = None,
+        entry_middle: float | None = None,
+        bars_in_trade: int = 0,
+    ) -> bool:
+        """Check exit condition based on strategy rules.
+
+        Args:
+            df: Rolling window DataFrame up to current bar.
+            strategy: Strategy name.
+            direction: 'long' or 'short'.
+            entry_price: Price at entry (used for bb_rsi_reversal stop).
+            entry_middle: Middle band at entry (used for bb_rsi_reversal stop).
+            bars_in_trade: Number of bars since entry (for time exit).
+
+        Returns:
+            True if exit condition is met.
+        """
         try:
             bb = BollingerBands()
             enriched = bb.calc(df)
@@ -231,6 +271,31 @@ class Backtester:
                     return close >= middle
                 else:
                     return close <= middle
+
+            elif strategy == "bb_rsi_reversal":
+                # Primary: price crosses middle band (take profit)
+                if direction == "long" and close >= middle:
+                    return True
+                if direction == "short" and close <= middle:
+                    return True
+
+                # Time-based exit: 10 bars
+                if bars_in_trade >= 10:
+                    return True
+
+                # Stop loss: 2x the distance from entry to middle band
+                if entry_price is not None and entry_middle is not None:
+                    target_dist = abs(entry_middle - entry_price)
+                    stop_dist = 2.0 * target_dist
+                    if direction == "long":
+                        stop_price = entry_price - stop_dist
+                        if close <= stop_price:
+                            return True
+                    else:
+                        stop_price = entry_price + stop_dist
+                        if close >= stop_price:
+                            return True
+
         except Exception:
             pass
         return False

@@ -661,12 +661,12 @@ def watchlist_remove(
 
 @app.command()
 def scan(
-    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend"),
+    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal"),
     period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min, 5Min, 1Min"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Scan watchlist symbols with a Bollinger Band strategy."""
-    valid_strategies = ("squeeze", "bounce", "trend")
+    valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
     if strategy not in valid_strategies:
         console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
         raise typer.Exit(1)
@@ -735,7 +735,7 @@ def scan(
 @app.command()
 def backtest(
     ticker: str = typer.Argument(..., help="Ticker symbol to backtest"),
-    strategy: str = typer.Option(..., "--strategy", help="Strategy: squeeze, bounce, trend"),
+    strategy: str = typer.Option(..., "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal"),
     start: str = typer.Option(..., "--start", help="Start date (YYYY-MM-DD)"),
     end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)"),
     capital: float = typer.Option(10000.0, "--capital", help="Initial capital (default $10,000)"),
@@ -743,7 +743,7 @@ def backtest(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Run a Bollinger Band strategy backtest on a ticker."""
-    valid_strategies = ("squeeze", "bounce", "trend")
+    valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
     if strategy not in valid_strategies:
         console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
         raise typer.Exit(1)

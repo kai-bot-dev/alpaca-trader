@@ -2,10 +2,10 @@
 
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from alpaca_trader.strategies.bollinger import BollingerBands
+from alpaca_trader.strategies.indicators import calc_macd
 
 
 @dataclass
@@ -16,16 +16,8 @@ class TrendSignal:
     macd_hist: float  # Current MACD histogram value (positive = bullish)
 
 
-def _calc_macd(close: pd.Series,
-               fast: int = 12, slow: int = 26, signal: int = 9
-               ) -> tuple[pd.Series, pd.Series, pd.Series]:
-    """Calculate MACD line, signal line, and histogram."""
-    ema_fast = close.ewm(span=fast, adjust=False).mean()
-    ema_slow = close.ewm(span=slow, adjust=False).mean()
-    macd_line = ema_fast - ema_slow
-    signal_line = macd_line.ewm(span=signal, adjust=False).mean()
-    histogram = macd_line - signal_line
-    return macd_line, signal_line, histogram
+# Keep private alias for backward compatibility
+_calc_macd = calc_macd
 
 
 class TrendDetector:

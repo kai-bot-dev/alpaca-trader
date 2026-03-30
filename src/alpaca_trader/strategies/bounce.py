@@ -3,10 +3,10 @@
 from dataclasses import dataclass
 from typing import Optional
 
-import numpy as np
 import pandas as pd
 
 from alpaca_trader.strategies.bollinger import BollingerBands
+from alpaca_trader.strategies.indicators import calc_rsi, calc_adx
 
 
 @dataclass
@@ -18,48 +18,9 @@ class BounceSignal:
     adx: float           # Current ADX value (range-bound if < 25)
 
 
-def _calc_rsi(close: pd.Series, period: int = 14) -> pd.Series:
-    """Calculate RSI using Wilder's smoothing."""
-    delta = close.diff()
-    gain = delta.clip(lower=0)
-    loss = -delta.clip(upper=0)
-    avg_gain = gain.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    rs = avg_gain / avg_loss.replace(0, np.nan)
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
-
-
-def _calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
-    """Calculate ADX (Average Directional Index)."""
-    high = df["high"]
-    low = df["low"]
-    close = df["close"]
-
-    # True Range
-    prev_close = close.shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
-
-    # Directional Movement
-    up_move = high.diff()
-    down_move = -low.diff()
-    pos_dm = np.where((up_move > down_move) & (up_move > 0), up_move, 0.0)
-    neg_dm = np.where((down_move > up_move) & (down_move > 0), down_move, 0.0)
-
-    pos_dm_s = pd.Series(pos_dm, index=df.index)
-    neg_dm_s = pd.Series(neg_dm, index=df.index)
-
-    atr = tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    pos_di = 100 * pos_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan)
-    neg_di = 100 * neg_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan)
-
-    dx = 100 * (pos_di - neg_di).abs() / (pos_di + neg_di).replace(0, np.nan)
-    adx = dx.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    return adx
+# Keep private aliases for backward compatibility
+_calc_rsi = calc_rsi
+_calc_adx = calc_adx
 
 
 class BounceDetector:

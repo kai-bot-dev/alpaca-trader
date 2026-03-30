@@ -33,3 +33,8 @@ packages = ["src/alpaca_trader"]
 
 [tool.hatch.metadata]
 allow-direct-references = true
+
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+]

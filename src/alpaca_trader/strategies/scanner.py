@@ -12,6 +12,7 @@ from alpaca_trader.strategies.bollinger import BollingerBands
 from alpaca_trader.strategies.squeeze import SqueezeDetector
 from alpaca_trader.strategies.bounce import BounceDetector
 from alpaca_trader.strategies.trend import TrendDetector
+from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector
 
 
 @dataclass
@@ -122,6 +123,23 @@ class WatchlistScanner:
                     detected=sig.detected, direction=sig.direction,
                     strength=sig.strength,
                     details={"macd_hist": round(sig.macd_hist, 4)},
+                    timestamp=timestamp,
+                )
+            elif strategy == "bb_rsi_reversal":
+                detector = BBRSIReversalDetector()
+                sig = detector.detect(df)
+                return Signal(
+                    symbol=symbol, strategy=strategy,
+                    detected=sig.detected, direction=sig.direction,
+                    strength=sig.strength,
+                    details={
+                        "rsi": round(sig.rsi, 1),
+                        "bb_pct": round(sig.bb_pct, 4),
+                        "confirmations": sig.confirmations,
+                        "target": round(sig.target_price, 2),
+                        "stop": round(sig.stop_price, 2),
+                        "risk_reward": round(sig.risk_reward, 2),
+                    },
                     timestamp=timestamp,
                 )
             else:
