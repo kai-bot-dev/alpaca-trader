@@ -60,14 +60,9 @@ async def main() -> None:
         scanner = WatchlistScanner()
         signals = scanner.scan(symbols, strategy=args.strategy, period=args.period)
 
-        # Check for alerts on matched signals
+        # Check for triggered alerts
         checker = AlertChecker()
-        new_alerts = []
-
-        for signal in signals:
-            if signal.detected:
-                alerts = await checker.check_alerts(signal)
-                new_alerts.extend(alerts)
+        new_alerts = await checker.check_all()
 
         # Queue alerts for delivery
         if new_alerts:
