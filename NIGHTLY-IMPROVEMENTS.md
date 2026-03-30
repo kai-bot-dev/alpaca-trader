@@ -22,7 +22,7 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 
 ### Medium Priority
 - [ ] Add integration test: full scan → signal → auto-trade pipeline (mocked API)
-- [ ] Improve logging: add structured logging (JSON) throughout the trading pipeline
+- [x] Improve logging: add structured logging (JSON) throughout the trading pipeline (2026-03-30)
 - [ ] Add type hints to all public functions that are missing them
 - [x] Create a health check endpoint in FastAPI (/api/health) with system status (2026-03-28)
 - [x] Add docstrings to all strategy detector classes (2026-03-28)
@@ -44,6 +44,19 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - [ ] Historical P&L charting on dashboard
 
 ## Completed
+- ✅ Improve logging: add structured JSON logging (2026-03-30)
+  - Created core/logging_config.py with JSONFormatter and HumanFormatter
+  - Auto-detects TTY (text for CLI) vs non-interactive (JSON for cron/pipes)
+  - Configurable via LOG_LEVEL and LOG_FORMAT env vars
+  - Added structured logging with extra fields to: scanner.py, checker.py, delivery.py, alerts/scanner.py
+  - Integrated setup_logging() into CLI (typer callback) and FastAPI lifespan
+  - 12 new tests in test_logging_config.py
+
+- ✅ Fix pre-existing test bugs (2026-03-30)
+  - Fixed test_risk_manager.py: make_rm() helper caused duplicate kwargs (20 tests broken)
+  - Fixed test_order_executor.py: test expected wrong return value for unknown order_id
+  - Fixed checker.py: missing 'timezone' import from datetime
+  - All 182 tests now passing
 - ✅ Fix DeprecationWarning: replace `datetime.utcnow()` with `datetime.now(timezone.utc)` everywhere (2026-03-27)
   - Fixed in: database.py, scanner.py, delivery.py, checker.py, alerts/scanner.py
   - Tested: All files verified to have no remaining utcnow() calls
