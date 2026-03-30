@@ -29,16 +29,34 @@ class TradeJournal:
         price: float,
         strategy: str,
         signal_details: Optional[dict] = None,
+        option_symbol: Optional[str] = None,
+        option_type: Optional[str] = None,
+        strike_price: Optional[float] = None,
+        expiry_date: Optional[str] = None,
+        premium_paid: Optional[float] = None,
+        contracts: Optional[int] = None,
+        delta_at_entry: Optional[float] = None,
+        theta_at_entry: Optional[float] = None,
+        iv_at_entry: Optional[float] = None,
     ) -> int:
-        """Log a new trade entry. Returns the trade_id."""
+        """Log a new trade entry. Returns the trade_id.
+
+        For options trades, pass option-specific kwargs (option_symbol, option_type, etc.).
+        """
         entry_time = datetime.now(timezone.utc).isoformat()
         details_json = json.dumps(signal_details or {})
         async with aiosqlite.connect(self._db_url) as db:
             cursor = await db.execute(
                 """INSERT INTO trade_journal
-                   (symbol, side, qty, entry_price, strategy, signal_details, entry_time, status)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, 'open')""",
-                (symbol.upper(), side.lower(), qty, price, strategy, details_json, entry_time),
+                   (symbol, side, qty, entry_price, strategy, signal_details, entry_time, status,
+                    option_symbol, option_type, strike_price, expiry_date, premium_paid,
+                    contracts, delta_at_entry, theta_at_entry, iv_at_entry)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    symbol.upper(), side.lower(), qty, price, strategy, details_json, entry_time,
+                    option_symbol, option_type, strike_price, expiry_date, premium_paid,
+                    contracts, delta_at_entry, theta_at_entry, iv_at_entry,
+                ),
             )
             await db.commit()
             trade_id = cursor.lastrowid

@@ -51,10 +51,14 @@ class BBRSIReversalDetector:
       Short: close > upper BB  AND  RSI > 70  AND  >= 1 confirmation
 
     Confirmations (each adds 1/3 to strength score):
-      - Volume spike: current volume > 1.5x 20-bar average
+      - Extreme oversold/overbought: RSI < 20 (long) or RSI > 80 (short)
+      - Volume spike: current volume > 1.2x 20-bar average
       - Candle pattern: green close after lower-band touch (long) or
                         red close after upper-band touch (short)
       - RSI divergence: price making new extreme but RSI pulling back
+
+    Note: if RSI < 25 (long) or RSI > 75 (short), signal fires without
+    requiring any confirmations — these are extremely oversold setups.
 
     Exit rules (used by backtester):
       - Primary:   price crosses middle band
@@ -66,7 +70,7 @@ class BBRSIReversalDetector:
         rsi_period: RSI calculation period (default 14).
         rsi_oversold: RSI threshold for long entry (default 30).
         rsi_overbought: RSI threshold for short entry (default 70).
-        volume_spike_mult: Volume multiplier to qualify a spike (default 1.5).
+        volume_spike_mult: Volume multiplier to qualify a spike (default 1.2).
         volume_sma_period: Period for volume SMA baseline (default 20).
         divergence_lookback: Number of bars to check for RSI divergence (default 5).
 
@@ -86,7 +90,7 @@ class BBRSIReversalDetector:
         rsi_period: int = 14,
         rsi_oversold: float = 30.0,
         rsi_overbought: float = 70.0,
-        volume_spike_mult: float = 1.5,
+        volume_spike_mult: float = 1.2,
         volume_sma_period: int = 20,
         divergence_lookback: int = 5,
     ):
@@ -144,6 +148,12 @@ class BBRSIReversalDetector:
         # Gather confirmations
         confirmations: list[str] = []
 
+        # Extreme RSI fires as its own confirmation (RSI < 20 long, > 80 short)
+        if direction == "long" and rsi < 20:
+            confirmations.append("extreme_oversold")
+        elif direction == "short" and rsi > 80:
+            confirmations.append("extreme_overbought")
+
         if self._check_volume_spike(df):
             confirmations.append("volume_spike")
 
@@ -153,15 +163,18 @@ class BBRSIReversalDetector:
         if self._check_rsi_divergence(df, rsi_series, direction):
             confirmations.append("rsi_divergence")
 
-        # Require at least one confirmation
-        if not confirmations:
+        # If RSI is extremely oversold/overbought, bypass the confirmation requirement
+        extreme_rsi = (direction == "long" and rsi < 25) or (direction == "short" and rsi > 75)
+        if not confirmations and not extreme_rsi:
             return BBRSIReversalSignal(
                 detected=False, direction="none", strength=0.0,
                 rsi=rsi, bb_pct=bb_pct, confirmations=[],
                 entry_price=close, target_price=middle, stop_price=0.0, risk_reward=0.0,
             )
 
-        strength = len(confirmations) / 3.0
+        # Strength: confirmations / 3, minimum 0.25 when bypassing confirmation check
+        raw_strength = len(confirmations) / 3.0
+        strength = raw_strength if confirmations else 0.25
         entry_price, target_price, stop_price, risk_reward = self._calc_targets(
             close, middle, direction
         )

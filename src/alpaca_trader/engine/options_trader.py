@@ -1,27 +1,29 @@
-"""AutoTrader orchestrator — ties scanner → risk → execution → journal."""
+"""OptionsTrader orchestrator — scan signals → select strikes → risk check → execute → journal."""
 
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone, time as dtime
+from datetime import datetime, timezone, time as dtime, timedelta
 from typing import Optional
 from zoneinfo import ZoneInfo
 
 from alpaca_trader.core import database as db
 from alpaca_trader.engine.risk_manager import RiskManager, RiskConfig
 from alpaca_trader.engine.order_executor import OrderExecutor, ExecutorConfig
-from alpaca_trader.engine.position_manager import PositionManager
+from alpaca_trader.engine.options_position_manager import OptionsPositionManager
 from alpaca_trader.engine.trade_journal import TradeJournal
+from alpaca_trader.engine.strike_selector import StrikeSelector
 from alpaca_trader.strategies.scanner import WatchlistScanner
 
 logger = logging.getLogger(__name__)
 
-# US Eastern market hours
 _ET = ZoneInfo("America/New_York")
 _MARKET_OPEN = dtime(9, 30)
 _MARKET_CLOSE = dtime(16, 0)
 
-PAPER_TRADE_LOCKOUT = 50  # require N closed paper trades before live
+MAX_CONCURRENT_OPTION_POSITIONS = 5
+MAX_PREMIUM_PCT = 0.02  # 2% of portfolio per trade
+MAX_TOTAL_PREMIUM_PCT = 0.10  # 10% of portfolio total options exposure
 
 
 def is_market_open(now: Optional[datetime] = None) -> bool:
@@ -29,92 +31,94 @@ def is_market_open(now: Optional[datetime] = None) -> bool:
     if now is None:
         now = datetime.now(timezone.utc)
     et_now = now.astimezone(_ET)
-    if et_now.weekday() >= 5:  # Saturday=5, Sunday=6
+    if et_now.weekday() >= 5:
         return False
     return _MARKET_OPEN <= et_now.time() < _MARKET_CLOSE
 
 
-class AutoTrader:
-    """Main auto-trading orchestrator. Designed to run every 5 min during market hours."""
+def _get_chain_expiry_range():
+    """Return (gte, lte) date range for 5-14 DTE options."""
+    from datetime import date
+    today = date.today()
+    return today + timedelta(days=5), today + timedelta(days=14)
+
+
+class OptionsTrader:
+    """Options auto-trading orchestrator. Designed to run every 5 min during market hours."""
 
     ENABLED_KEY = "auto_trader_enabled"
+    MODE_KEY = "trading_mode"
 
     def __init__(
         self,
         risk_manager: Optional[RiskManager] = None,
         order_executor: Optional[OrderExecutor] = None,
-        position_manager: Optional[PositionManager] = None,
+        position_manager: Optional[OptionsPositionManager] = None,
         trade_journal: Optional[TradeJournal] = None,
         scanner: Optional[WatchlistScanner] = None,
+        strike_selector: Optional[StrikeSelector] = None,
         dry_run: bool = False,
     ) -> None:
-        self.risk_manager = risk_manager or RiskManager()
+        self.risk_manager = risk_manager or RiskManager(
+            config=RiskConfig(
+                max_open_positions=MAX_CONCURRENT_OPTION_POSITIONS,
+                max_position_pct=MAX_PREMIUM_PCT,
+            )
+        )
         if order_executor is None:
             cfg = ExecutorConfig(dry_run=dry_run)
             order_executor = OrderExecutor(config=cfg)
         self.order_executor = order_executor
-        self.position_manager = position_manager or PositionManager()
+        self.position_manager = position_manager or OptionsPositionManager()
         self.trade_journal = trade_journal or TradeJournal()
         self.scanner = scanner or WatchlistScanner()
+        self.strike_selector = strike_selector  # initialized in run_cycle after fetching portfolio_value
         self._dry_run = dry_run
         self._trades_today: int = 0
-
-    # ------------------------------------------------------------------
-    # Enable / Disable
-    # ------------------------------------------------------------------
 
     async def enable(self) -> None:
         """Enable auto-trading (persisted to DB settings)."""
         await db.setting_set(self.ENABLED_KEY, "true")
-        logger.info("AutoTrader enabled")
+        logger.info("OptionsTrader enabled")
 
     async def disable(self) -> None:
-        """Disable auto-trading (persisted to DB settings)."""
+        """Disable auto-trading."""
         await db.setting_set(self.ENABLED_KEY, "false")
-        logger.info("AutoTrader disabled")
+        logger.info("OptionsTrader disabled")
 
     async def is_enabled(self) -> bool:
-        """Return True if auto-trading is enabled in DB settings."""
         val = await db.setting_get(self.ENABLED_KEY)
         return val == "true"
-
-    # ------------------------------------------------------------------
-    # Status
-    # ------------------------------------------------------------------
 
     async def status(self) -> dict:
         """Return engine status dict."""
         enabled = await self.is_enabled()
         trade_count = await self.trade_journal.get_trade_count()
         stats = await self.trade_journal.get_stats()
+        mode = await db.setting_get(self.MODE_KEY) or "stocks"
         return {
             "enabled": enabled,
+            "mode": mode,
             "dry_run": self._dry_run,
             "circuit_breaker": self.risk_manager.is_circuit_broken,
             "circuit_breaker_reason": self.risk_manager._circuit_broken_reason,
             "trades_today": self._trades_today,
             "closed_trades": trade_count,
-            "paper_lockout_remaining": max(0, PAPER_TRADE_LOCKOUT - trade_count),
             "market_open": is_market_open(),
             "journal_stats": stats,
         }
 
-    # ------------------------------------------------------------------
-    # Main cycle
-    # ------------------------------------------------------------------
-
     async def run_cycle(self) -> dict:
-        """Run one full auto-trade cycle.
+        """Run one full options auto-trade cycle.
 
         Steps:
-        1. Check if enabled + market is open
-        2. Check existing positions for exits
-        3. Execute any exit orders
-        4. Get new signals from scanner
-        5. Run risk checks on each signal
-        6. Execute approved entry orders
-        7. Log everything to journal
-        8. Return summary dict
+        1. Check enabled + market open
+        2. Fetch account info
+        3. Check open option positions for exits
+        4. Scan watchlist for signals
+        5. Risk check + select strike for each signal
+        6. Execute option entries
+        7. Return summary
         """
         summary: dict = {
             "enabled": False,
@@ -126,26 +130,25 @@ class AutoTrader:
             "entries_executed": 0,
             "errors": [],
             "cycle_time": datetime.now(timezone.utc).isoformat(),
+            "mode": "options",
         }
 
-        # Step 1: Guard checks
         enabled = await self.is_enabled()
         summary["enabled"] = enabled
         market_open = is_market_open()
         summary["market_open"] = market_open
 
         if not enabled:
-            logger.info("AutoTrader: cycle skipped — not enabled")
+            logger.info("OptionsTrader: cycle skipped — not enabled")
             return summary
         if not market_open:
-            logger.info("AutoTrader: cycle skipped — market closed")
+            logger.info("OptionsTrader: cycle skipped — market closed")
             return summary
         if self.risk_manager.is_circuit_broken:
-            summary["errors"].append(f"Circuit breaker tripped: {self.risk_manager._circuit_broken_reason}")
-            logger.warning("AutoTrader: cycle skipped — circuit breaker tripped")
+            summary["errors"].append(f"Circuit breaker: {self.risk_manager._circuit_broken_reason}")
             return summary
 
-        # Step 2: Get account info
+        # Fetch account
         try:
             from alpaca_trader.core import client as alpaca
             account = alpaca.get_account()
@@ -154,16 +157,18 @@ class AutoTrader:
             daily_pnl = float(account.get("equity", portfolio_value) or 0) - portfolio_value
         except Exception as e:
             summary["errors"].append(f"Account fetch failed: {e}")
-            logger.error("AutoTrader: account fetch failed: %s", e)
+            logger.error("OptionsTrader: account fetch failed: %s", e)
             return summary
 
-        # Step 3 & 4: Check open positions for exits
+        # Initialize StrikeSelector with live portfolio_value
+        selector = self.strike_selector or StrikeSelector(portfolio_value=portfolio_value)
+
+        # Check open option positions for exits
         try:
             from alpaca_trader.core import client as alpaca
             positions = alpaca.get_positions()
         except Exception as e:
             summary["errors"].append(f"Positions fetch failed: {e}")
-            logger.error("AutoTrader: positions fetch failed: %s", e)
             positions = []
 
         open_journal = await self.trade_journal.get_trades(status="open", limit=200)
@@ -179,25 +184,28 @@ class AutoTrader:
                 if qty <= 0:
                     continue
 
-                # Execute the exit (sell)
                 result = self.order_executor.place_market_order(symbol, qty, "sell")
                 if result.success:
                     summary["exits_executed"] += 1
                     self._trades_today += 1
-                    # Close open journal trade
-                    open_trade = await self.trade_journal.get_open_trade_for_symbol(symbol)
+                    # Find journal entry by option_symbol
+                    open_trade = None
+                    for jt in open_journal:
+                        if (jt.get("option_symbol") or "").upper() == symbol.upper():
+                            open_trade = jt
+                            break
+                    if open_trade is None:
+                        open_trade = await self.trade_journal.get_open_trade_for_symbol(symbol)
                     if open_trade:
-                        await self.trade_journal.log_exit(
-                            open_trade["id"], current_price, exit_reason
-                        )
-                    logger.info("Exit executed: %s qty=%d reason=%s", symbol, qty, exit_reason)
+                        await self.trade_journal.log_exit(open_trade["id"], current_price, exit_reason)
+                    logger.info("Options exit: %s qty=%d reason=%s", symbol, qty, exit_reason)
                 else:
                     summary["errors"].append(f"Exit order failed for {symbol}: {result.error}")
             except Exception as e:
                 summary["errors"].append(f"Exit error for {symbol}: {e}")
-                logger.error("AutoTrader: exit error for %s: %s", symbol, e)
+                logger.error("OptionsTrader: exit error for %s: %s", symbol, e)
 
-        # Step 5: Scan for new signals
+        # Scan for signals
         try:
             watchlist = await db.watchlist_list()
             symbols = [w["symbol"] for w in watchlist]
@@ -206,70 +214,77 @@ class AutoTrader:
             symbols = []
 
         if not symbols:
-            logger.info("AutoTrader: no symbols in watchlist — skipping entry scan")
             return summary
 
-        # Scan all strategies (daily bars) and merge by highest strength per symbol
         best_by_symbol: dict[str, object] = {}
         for strategy in ("bb_rsi_reversal", "bounce", "squeeze"):
             try:
-                strat_signals = self.scanner.scan(symbols, strategy=strategy, period="1D")
-                for s in strat_signals:
+                for s in self.scanner.scan(symbols, strategy=strategy, period="1D"):
                     if s.detected:
                         existing = best_by_symbol.get(s.symbol)
                         if existing is None or s.strength > existing.strength:  # type: ignore[union-attr]
                             best_by_symbol[s.symbol] = s
             except Exception as e:
                 summary["errors"].append(f"Scanner failed ({strategy}): {e}")
-                logger.error("AutoTrader: scanner failed for %s: %s", strategy, e)
 
-        # Also scan intraday (15Min) for bb_rsi_reversal and bounce
         for strategy in ("bb_rsi_reversal", "bounce"):
             try:
-                intraday = self.scanner.scan(symbols, strategy=strategy, period="15Min", limit=100)
-                for s in intraday:
+                for s in self.scanner.scan(symbols, strategy=strategy, period="15Min", limit=100):
                     if s.detected:
                         existing = best_by_symbol.get(s.symbol)
                         if existing is None or s.strength > existing.strength:  # type: ignore[union-attr]
                             best_by_symbol[s.symbol] = s
             except Exception as e:
                 summary["errors"].append(f"Intraday scanner failed ({strategy}): {e}")
-                logger.error("AutoTrader: intraday scanner failed for %s: %s", strategy, e)
 
         actionable = list(best_by_symbol.values())
         summary["signals_found"] = len(actionable)
 
-        open_position_symbols = {(p.get("symbol") or "").upper() for p in positions}
+        open_option_symbols = {(p.get("symbol") or "").upper() for p in positions}
         open_positions_count = len(positions)
 
-        # Step 6 & 7: Risk check + execute entries
         for signal in actionable:
-            symbol = signal.symbol
-            # Skip if we already hold this symbol
-            if symbol in open_position_symbols:
+            underlying = signal.symbol
+            if open_positions_count >= MAX_CONCURRENT_OPTION_POSITIONS:
+                logger.info("OptionsTrader: max positions reached (%d)", open_positions_count)
+                break
+
+            # Skip if we already hold an option on this underlying
+            if any(underlying in sym for sym in open_option_symbols):
                 continue
 
             try:
-                # Estimate price from signal details or use a rough proxy
-                target = signal.details.get("target") or signal.details.get("target_price")
-                stop = signal.details.get("stop") or signal.details.get("stop_price")
-                # Get current price via bars
+                direction = "long" if signal.details.get("direction", "long") == "long" else "short"
+                option_type = "call" if direction == "long" else "put"
+
                 from alpaca_trader.core import client as alpaca
-                bars = alpaca.get_stock_bars_df(symbol, period="1D", limit=2)
-                if bars.empty:
-                    continue
-                price = float(bars["close"].iloc[-1])
-                if price <= 0:
+                expiry_gte, expiry_lte = _get_chain_expiry_range()
+                chain = alpaca.get_option_chain(
+                    underlying_symbol=underlying,
+                    expiration_date_gte=expiry_gte,
+                    expiration_date_lte=expiry_lte,
+                    option_type=option_type,
+                    limit=100,
+                )
+                if not chain:
+                    logger.info("OptionsTrader: empty chain for %s %s", underlying, option_type)
                     continue
 
-                qty = self.risk_manager.calculate_position_size(price, portfolio_value)
-                if qty <= 0:
+                contract = selector.select_contract(underlying, direction, chain)
+                if contract is None:
+                    logger.info("OptionsTrader: no suitable contract for %s %s", underlying, direction)
                     continue
 
+                option_symbol = contract["symbol"]
+                ask_price = contract["ask"]
+                contracts_qty = contract["contracts_to_buy"]
+                option_value = ask_price * 100 * contracts_qty
+
+                # Risk check on the premium cost
                 risk_result = self.risk_manager.check_order(
-                    symbol=symbol,
-                    qty=qty,
-                    price=price,
+                    symbol=option_symbol,
+                    qty=contracts_qty,
+                    price=ask_price * 100,  # premium per contract
                     side="buy",
                     portfolio_value=portfolio_value,
                     cash=cash,
@@ -278,34 +293,44 @@ class AutoTrader:
                     trades_today=self._trades_today,
                 )
                 if risk_result.rejected:
-                    logger.info("Risk rejected %s: %s", symbol, risk_result.reason)
+                    logger.info("OptionsTrader: risk rejected %s: %s", option_symbol, risk_result.reason)
                     continue
 
                 summary["entries_approved"] += 1
-                approved_qty = risk_result.adjusted_qty
 
-                # Execute entry
-                order_result = self.order_executor.place_market_order(symbol, approved_qty, "buy")
+                order_result = self.order_executor.place_market_order(option_symbol, contracts_qty, "buy")
                 if order_result.success:
                     summary["entries_executed"] += 1
                     self._trades_today += 1
                     open_positions_count += 1
+                    open_option_symbols.add(option_symbol.upper())
+
                     trade_id = await self.trade_journal.log_entry(
-                        symbol=symbol,
+                        symbol=underlying,
                         side="buy",
-                        qty=approved_qty,
-                        price=price,
+                        qty=contracts_qty,
+                        price=ask_price,
                         strategy=signal.strategy,
                         signal_details=signal.details,
+                        option_symbol=option_symbol,
+                        option_type=option_type,
+                        strike_price=contract["strike"],
+                        expiry_date=contract["expiry"],
+                        premium_paid=ask_price,
+                        contracts=contracts_qty,
+                        delta_at_entry=contract["delta"],
+                        theta_at_entry=contract["theta"],
+                        iv_at_entry=contract.get("iv"),
                     )
                     logger.info(
-                        "Entry executed: %s qty=%d price=%.2f trade_id=%d",
-                        symbol, approved_qty, price, trade_id,
+                        "Options entry: %s %s contracts=%d premium=%.2f trade_id=%d",
+                        underlying, option_symbol, contracts_qty, ask_price, trade_id,
                     )
                 else:
-                    summary["errors"].append(f"Entry order failed for {symbol}: {order_result.error}")
+                    summary["errors"].append(f"Entry order failed for {option_symbol}: {order_result.error}")
+
             except Exception as e:
-                summary["errors"].append(f"Entry error for {symbol}: {e}")
-                logger.error("AutoTrader: entry error for %s: %s", symbol, e)
+                summary["errors"].append(f"Entry error for {underlying}: {e}")
+                logger.error("OptionsTrader: entry error for %s: %s", underlying, e)
 
         return summary

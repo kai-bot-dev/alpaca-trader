@@ -158,6 +158,26 @@ async def init_db() -> None:
             ON trade_journal (strategy)
         """)
 
+        # Options fields on trade_journal (Sprint 9) — migration-safe
+        _option_columns = [
+            ("option_symbol", "TEXT"),
+            ("option_type", "TEXT"),
+            ("strike_price", "REAL"),
+            ("expiry_date", "TEXT"),
+            ("premium_paid", "REAL"),
+            ("contracts", "INTEGER"),
+            ("delta_at_entry", "REAL"),
+            ("theta_at_entry", "REAL"),
+            ("iv_at_entry", "REAL"),
+        ]
+        for col_name, col_type in _option_columns:
+            try:
+                await db.execute(
+                    f"ALTER TABLE trade_journal ADD COLUMN {col_name} {col_type}"
+                )
+            except Exception:
+                pass  # Column already exists — safe to ignore
+
         await db.commit()
 
 

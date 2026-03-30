@@ -36,7 +36,16 @@ async def _setup_db(db_path: str) -> None:
                 pnl REAL,
                 pnl_pct REAL,
                 exit_reason TEXT,
-                status TEXT DEFAULT 'open'
+                status TEXT DEFAULT 'open',
+                option_symbol TEXT,
+                option_type TEXT,
+                strike_price REAL,
+                expiry_date TEXT,
+                premium_paid REAL,
+                contracts INTEGER,
+                delta_at_entry REAL,
+                theta_at_entry REAL,
+                iv_at_entry REAL
             )
         """)
         await db.commit()

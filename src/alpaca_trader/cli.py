@@ -3,6 +3,7 @@
 import asyncio
 import json
 import sys
+import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
@@ -44,6 +45,8 @@ def _json_serializer(obj):
     if isinstance(obj, (datetime, date)):
         return obj.isoformat()
     if isinstance(obj, Decimal):
+        return str(obj)
+    if isinstance(obj, uuid.UUID):
         return str(obj)
     raise TypeError(f"Type {type(obj)} not serializable")
 
@@ -668,12 +671,12 @@ def watchlist_remove(
 
 @app.command()
 def scan(
-    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal"),
+    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal, all"),
     period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min, 5Min, 1Min"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Scan watchlist symbols with a Bollinger Band strategy."""
-    valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
+    valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal", "all")
     if strategy not in valid_strategies:
         console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
         raise typer.Exit(1)
@@ -692,7 +695,20 @@ def scan(
 
     try:
         scanner = WatchlistScanner()
-        signals = scanner.scan(symbols, strategy=strategy, period=period)
+        if strategy == "all":
+            # Run all strategies and merge: best signal per symbol wins
+            all_strats = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
+            best_by_symbol: dict[str, object] = {}
+            all_signals = []
+            for strat in all_strats:
+                strat_signals = scanner.scan(symbols, strategy=strat, period=period)
+                for s in strat_signals:
+                    existing = best_by_symbol.get(s.symbol)
+                    if existing is None or (s.detected and (not existing.detected or s.strength > existing.strength)):  # type: ignore[union-attr]
+                        best_by_symbol[s.symbol] = s
+            signals = sorted(best_by_symbol.values(), key=lambda s: (not s.detected, s.symbol))  # type: ignore[arg-type]
+        else:
+            signals = scanner.scan(symbols, strategy=strategy, period=period)
     except EnvironmentError as e:
         console.print(f"[red]Configuration error:[/red] {e}")
         raise typer.Exit(1)
@@ -715,8 +731,10 @@ def scan(
         ])
         return
 
-    table = Table(title=f"Bollinger Scan: {strategy.upper()} ({len(signals)} symbols, {period})")
+    title_strat = "ALL STRATEGIES" if strategy == "all" else strategy.upper()
+    table = Table(title=f"Bollinger Scan: {title_strat} ({len(signals)} symbols, {period})")
     table.add_column("Symbol", style="bold cyan")
+    table.add_column("Strategy")
     table.add_column("Signal")
     table.add_column("Direction")
     table.add_column("Strength", justify="right")
@@ -732,7 +750,7 @@ def scan(
         strength_str = f"{s.strength:.2f}" if s.detected else "—"
         detail_str = ", ".join(f"{k}={v}" for k, v in s.details.items()) if s.details else "—"
 
-        table.add_row(s.symbol, detected_str, direction_str, strength_str, detail_str)
+        table.add_row(s.symbol, s.strategy, detected_str, direction_str, strength_str, detail_str)
 
     console.print(table)
 
@@ -1170,11 +1188,13 @@ app.add_typer(auto_app, name="auto")
 def auto_status(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
-    """Show auto-trading engine state (enabled, circuit breaker, trades today, journal stats)."""
+    """Show auto-trading engine state (enabled, mode, circuit breaker, trades today, journal stats)."""
     from alpaca_trader.engine.auto_trader import AutoTrader
     asyncio.run(db.init_db())
     trader = AutoTrader()
     result = asyncio.run(trader.status())
+    trading_mode = asyncio.run(db.setting_get("trading_mode")) or "stocks"
+    result["trading_mode"] = trading_mode
 
     if json_output:
         _print_json(result)
@@ -1188,9 +1208,13 @@ def auto_status(
     cb_str = "[red]TRIPPED[/red]" if result["circuit_breaker"] else "[green]OK[/green]"
     market_str = "[green]OPEN[/green]" if result["market_open"] else "[dim]closed[/dim]"
     dry_str = "[yellow]dry-run[/yellow]" if result["dry_run"] else "[green]LIVE[/green]"
+    mode_str = (
+        "[cyan]options[/cyan]" if trading_mode == "options" else "[white]stocks[/white]"
+    )
 
     t.add_row("Enabled", enabled_str)
-    t.add_row("Mode", dry_str)
+    t.add_row("Trading Mode", mode_str)
+    t.add_row("Execution", dry_str)
     t.add_row("Market", market_str)
     t.add_row("Circuit Breaker", cb_str)
     if result["circuit_breaker"] and result["circuit_breaker_reason"]:
@@ -1206,6 +1230,26 @@ def auto_status(
         t.add_row("Total P&L", _fmt_decimal(stats["total_pnl"]))
 
     console.print(t)
+
+
+@auto_app.command("mode")
+def auto_mode(
+    mode: str = typer.Argument(..., help="Trading mode: 'options' or 'stocks'"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Switch auto-trading mode between 'options' and 'stocks'."""
+    asyncio.run(db.init_db())
+    mode = mode.lower().strip()
+    if mode not in ("options", "stocks"):
+        console.print("[red]Invalid mode. Use 'options' or 'stocks'.[/red]")
+        raise typer.Exit(1)
+    asyncio.run(db.setting_set("trading_mode", mode))
+    result = {"success": True, "trading_mode": mode}
+    if json_output:
+        _print_json(result)
+        return
+    color = "cyan" if mode == "options" else "white"
+    console.print(f"Trading mode set to [{color}]{mode}[/{color}].")
 
 
 @auto_app.command("enable")
@@ -1243,11 +1287,22 @@ def auto_disable(
 @auto_app.command("run")
 def auto_run(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+    live: bool = typer.Option(False, "--live", help="Run in live mode (disable dry-run paper trading)"),
 ):
-    """Run one auto-trade cycle manually (for testing)."""
-    from alpaca_trader.engine.auto_trader import AutoTrader
+    """Run one auto-trade cycle (paper trading by default; use --live for real orders).
+
+    Uses OptionsTrader when trading_mode=options, AutoTrader otherwise.
+    """
     asyncio.run(db.init_db())
-    trader = AutoTrader()
+    trading_mode = asyncio.run(db.setting_get("trading_mode")) or "stocks"
+
+    if trading_mode == "options":
+        from alpaca_trader.engine.options_trader import OptionsTrader
+        trader = OptionsTrader(dry_run=not live)
+    else:
+        from alpaca_trader.engine.auto_trader import AutoTrader
+        trader = AutoTrader(dry_run=not live)
+
     try:
         summary = asyncio.run(trader.run_cycle())
     except Exception as e:
@@ -1258,7 +1313,9 @@ def auto_run(
         _print_json(summary)
         return
 
+    mode_label = trading_mode.upper()
     console.print(Panel(
+        f"Mode: [cyan]{mode_label}[/cyan]  |  "
         f"Market open: {'[green]yes[/green]' if summary['market_open'] else '[dim]no[/dim]'}  |  "
         f"Enabled: {'[green]yes[/green]' if summary['enabled'] else '[red]no[/red]'}\n"
         f"Exits checked: {summary['exits_checked']}  executed: {summary['exits_executed']}\n"

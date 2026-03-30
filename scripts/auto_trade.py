@@ -53,7 +53,14 @@ async def main() -> None:
             print("MARKET_CLOSED")
         return
 
-    trader = AutoTrader(dry_run=args.dry_run)
+    # Determine trading mode
+    trading_mode = await db.setting_get("trading_mode") or "stocks"
+
+    if trading_mode == "options":
+        from alpaca_trader.engine.options_trader import OptionsTrader
+        trader = OptionsTrader(dry_run=args.dry_run)
+    else:
+        trader = AutoTrader(dry_run=args.dry_run)
 
     # Quick check: is it enabled?
     enabled = await trader.is_enabled()
