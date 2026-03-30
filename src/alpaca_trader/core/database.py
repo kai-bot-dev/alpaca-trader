@@ -130,6 +130,34 @@ async def init_db() -> None:
             ON alerts (status)
         """)
 
+        # Trade journal (Sprint 7)
+        await db.execute("""
+            CREATE TABLE IF NOT EXISTS trade_journal (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                symbol TEXT NOT NULL,
+                side TEXT NOT NULL,
+                qty INTEGER NOT NULL,
+                entry_price REAL NOT NULL,
+                exit_price REAL,
+                strategy TEXT,
+                signal_details TEXT,
+                entry_time TEXT NOT NULL,
+                exit_time TEXT,
+                pnl REAL,
+                pnl_pct REAL,
+                exit_reason TEXT,
+                status TEXT DEFAULT 'open'
+            )
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trade_journal_status
+            ON trade_journal (status)
+        """)
+        await db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_trade_journal_strategy
+            ON trade_journal (strategy)
+        """)
+
         await db.commit()
 
 

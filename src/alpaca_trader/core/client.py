@@ -1,7 +1,7 @@
 """Alpaca API client wrapper for alpaca-trader."""
 
 import os
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
 
@@ -65,12 +65,17 @@ def _get_data_client() -> OptionHistoricalDataClient:
 
 def _serialize(obj) -> dict:
     """Convert an Alpaca SDK object to a plain dict."""
+    from enum import Enum
+    if isinstance(obj, Enum):
+        return obj.value
     if hasattr(obj, "__dict__"):
         result = {}
         for k, v in obj.__dict__.items():
             if k.startswith("_"):
                 continue
-            if isinstance(v, (datetime, date)):
+            if isinstance(v, Enum):
+                result[k] = v.value
+            elif isinstance(v, (datetime, date)):
                 result[k] = v.isoformat()
             elif isinstance(v, Decimal):
                 result[k] = str(v)
@@ -523,6 +528,15 @@ def get_stock_bars(
     }
     timeframe = period_map.get(period, TimeFrame.Day)
 
+    # If no start date given, default to enough history for Bollinger Bands (20-period)
+    if start is None and end is None:
+        from datetime import timedelta
+        # For daily bars, go back ~6 months; for intraday, 30 days
+        if timeframe == TimeFrame.Day:
+            start = datetime.now(timezone.utc) - timedelta(days=180)
+        else:
+            start = datetime.now(timezone.utc) - timedelta(days=30)
+
     request = StockBarsRequest(
         symbol_or_symbols=symbol.upper(),
         timeframe=timeframe,
@@ -533,7 +547,13 @@ def get_stock_bars(
     bars = client.get_stock_bars(request)
 
     result = []
-    bar_data = bars.get(symbol.upper(), bars.get(symbol, []))
+    try:
+        bar_data = bars[symbol.upper()]
+    except (KeyError, IndexError):
+        try:
+            bar_data = bars[symbol]
+        except (KeyError, IndexError):
+            bar_data = []
     for bar in bar_data:
         b = _serialize(bar)
         result.append({

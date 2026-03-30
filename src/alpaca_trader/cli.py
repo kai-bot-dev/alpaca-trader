@@ -277,7 +277,7 @@ def orders(
         order_id = str(o.get("id", ""))[:8] + "..."
         side = o.get("side", "—")
         side_styled = f"[green]{side}[/green]" if side == "buy" else f"[red]{side}[/red]"
-        status_val = o.get("status", "—")
+        status_val = str(o.get("status", "—"))
         submitted = str(o.get("submitted_at", "—"))[:19]
 
         table.add_row(
@@ -1158,6 +1158,211 @@ def serve(
         port=port,
         reload=reload,
     )
+
+
+# --- auto command group ---
+
+auto_app = typer.Typer(help="Auto-trading engine control")
+app.add_typer(auto_app, name="auto")
+
+
+@auto_app.command("status")
+def auto_status(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show auto-trading engine state (enabled, circuit breaker, trades today, journal stats)."""
+    from alpaca_trader.engine.auto_trader import AutoTrader
+    asyncio.run(db.init_db())
+    trader = AutoTrader()
+    result = asyncio.run(trader.status())
+
+    if json_output:
+        _print_json(result)
+        return
+
+    t = Table(title="Auto-Trader Status", show_header=False, box=None)
+    t.add_column("Field", style="dim", width=26)
+    t.add_column("Value")
+
+    enabled_str = "[green]YES[/green]" if result["enabled"] else "[red]NO[/red]"
+    cb_str = "[red]TRIPPED[/red]" if result["circuit_breaker"] else "[green]OK[/green]"
+    market_str = "[green]OPEN[/green]" if result["market_open"] else "[dim]closed[/dim]"
+    dry_str = "[yellow]dry-run[/yellow]" if result["dry_run"] else "[green]LIVE[/green]"
+
+    t.add_row("Enabled", enabled_str)
+    t.add_row("Mode", dry_str)
+    t.add_row("Market", market_str)
+    t.add_row("Circuit Breaker", cb_str)
+    if result["circuit_breaker"] and result["circuit_breaker_reason"]:
+        t.add_row("CB Reason", result["circuit_breaker_reason"])
+    t.add_row("Trades Today", str(result["trades_today"]))
+    t.add_row("Closed Trades", str(result["closed_trades"]))
+    t.add_row("Paper Lockout Remaining", str(result["paper_lockout_remaining"]))
+
+    stats = result.get("journal_stats", {})
+    if stats and stats.get("total_trades", 0) > 0:
+        t.add_row("Win Rate", f"{stats['win_rate']*100:.1f}%")
+        t.add_row("Avg P&L", _fmt_decimal(stats["avg_pnl"]))
+        t.add_row("Total P&L", _fmt_decimal(stats["total_pnl"]))
+
+    console.print(t)
+
+
+@auto_app.command("enable")
+def auto_enable(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Enable auto-trading."""
+    from alpaca_trader.engine.auto_trader import AutoTrader
+    asyncio.run(db.init_db())
+    trader = AutoTrader()
+    asyncio.run(trader.enable())
+    result = {"success": True, "message": "Auto-trading enabled"}
+    if json_output:
+        _print_json(result)
+        return
+    console.print("[green]Auto-trading enabled.[/green]")
+
+
+@auto_app.command("disable")
+def auto_disable(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Disable auto-trading."""
+    from alpaca_trader.engine.auto_trader import AutoTrader
+    asyncio.run(db.init_db())
+    trader = AutoTrader()
+    asyncio.run(trader.disable())
+    result = {"success": True, "message": "Auto-trading disabled"}
+    if json_output:
+        _print_json(result)
+        return
+    console.print("[yellow]Auto-trading disabled.[/yellow]")
+
+
+@auto_app.command("run")
+def auto_run(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Run one auto-trade cycle manually (for testing)."""
+    from alpaca_trader.engine.auto_trader import AutoTrader
+    asyncio.run(db.init_db())
+    trader = AutoTrader()
+    try:
+        summary = asyncio.run(trader.run_cycle())
+    except Exception as e:
+        console.print(f"[red]Cycle error:[/red] {e}")
+        raise typer.Exit(1)
+
+    if json_output:
+        _print_json(summary)
+        return
+
+    console.print(Panel(
+        f"Market open: {'[green]yes[/green]' if summary['market_open'] else '[dim]no[/dim]'}  |  "
+        f"Enabled: {'[green]yes[/green]' if summary['enabled'] else '[red]no[/red]'}\n"
+        f"Exits checked: {summary['exits_checked']}  executed: {summary['exits_executed']}\n"
+        f"Signals found: {summary['signals_found']}  entries: {summary['entries_executed']}",
+        title=f"Auto-Trade Cycle — {summary['cycle_time'][:19]}",
+    ))
+    if summary.get("errors"):
+        console.print("[red]Errors:[/red]")
+        for err in summary["errors"]:
+            console.print(f"  [dim]• {err}[/dim]")
+
+
+# --- journal command group ---
+
+journal_app = typer.Typer(help="Trade journal — view and analyze trade history")
+app.add_typer(journal_app, name="journal")
+
+
+@journal_app.command("list")
+def journal_list(
+    limit: int = typer.Option(50, "--limit", help="Number of trades to show"),
+    strategy: Optional[str] = typer.Option(None, "--strategy", help="Filter by strategy"),
+    status: Optional[str] = typer.Option(None, "--status", help="Filter: open, closed"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show recent trades from the journal."""
+    from alpaca_trader.engine.trade_journal import TradeJournal
+    asyncio.run(db.init_db())
+    journal = TradeJournal()
+    trades = asyncio.run(journal.get_trades(limit=limit, strategy=strategy, status=status))
+
+    if json_output:
+        _print_json(trades)
+        return
+
+    if not trades:
+        console.print("[dim]No trades found.[/dim]")
+        return
+
+    table = Table(title=f"Trade Journal ({len(trades)} trades)")
+    table.add_column("ID", style="dim", width=5)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Side")
+    table.add_column("Qty", justify="right")
+    table.add_column("Entry $", justify="right")
+    table.add_column("Exit $", justify="right")
+    table.add_column("P&L", justify="right")
+    table.add_column("P&L %", justify="right")
+    table.add_column("Strategy")
+    table.add_column("Status")
+    table.add_column("Entry Time", style="dim")
+
+    for t in trades:
+        pnl = t.get("pnl")
+        pnl_pct = t.get("pnl_pct")
+        status_val = t.get("status", "open")
+        status_str = "[green]closed[/green]" if status_val == "closed" else "[yellow]open[/yellow]"
+        side_str = "[green]buy[/green]" if t.get("side") == "buy" else "[red]sell[/red]"
+        table.add_row(
+            str(t.get("id", "—")),
+            t.get("symbol", "—"),
+            side_str,
+            str(t.get("qty", "—")),
+            _fmt_decimal(t.get("entry_price")),
+            _fmt_decimal(t.get("exit_price")) if t.get("exit_price") else "—",
+            _fmt_decimal(pnl) if pnl is not None else "—",
+            _fmt_pct(pnl_pct) if pnl_pct is not None else "—",
+            t.get("strategy") or "—",
+            status_str,
+            str(t.get("entry_time", "—"))[:19],
+        )
+
+    console.print(table)
+
+
+@journal_app.command("stats")
+def journal_stats(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show trade journal statistics: win rate, P&L, trade count."""
+    from alpaca_trader.engine.trade_journal import TradeJournal
+    asyncio.run(db.init_db())
+    journal = TradeJournal()
+    stats = asyncio.run(journal.get_stats())
+    count = asyncio.run(journal.get_trade_count())
+
+    if json_output:
+        _print_json({**stats, "closed_trades": count})
+        return
+
+    t = Table(title="Journal Statistics", show_header=False, box=None)
+    t.add_column("Metric", style="dim", width=26)
+    t.add_column("Value")
+
+    t.add_row("Closed Trades", str(stats["total_trades"]))
+    t.add_row("Open Trades", str(stats["open_trades"]))
+    t.add_row("Win Rate", f"{stats['win_rate']*100:.1f}%")
+    t.add_row("Avg P&L per Trade", _fmt_decimal(stats["avg_pnl"]))
+    t.add_row("Total P&L", _fmt_decimal(stats["total_pnl"]))
+    t.add_row("Sharpe (raw)", f"{stats['sharpe']:.3f}")
+    remaining = max(0, 50 - count)
+    t.add_row("Paper Lockout Remaining", str(remaining))
+
+    console.print(t)
 
 
 if __name__ == "__main__":
