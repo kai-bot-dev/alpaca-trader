@@ -14,6 +14,7 @@ from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
 
+from alpaca_trader.core.logging_config import setup_logging
 from alpaca_trader.core import client as alpaca
 from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
@@ -28,6 +29,12 @@ app = typer.Typer(
     help="Alpaca options paper trading CLI",
     add_completion=False,
 )
+
+
+@app.callback()
+def main_callback() -> None:
+    """Initialize logging on CLI startup."""
+    setup_logging()
 
 console = Console()
 

@@ -5,7 +5,7 @@ from alpaca_trader.engine.risk_manager import RiskManager, RiskConfig, RiskCheck
 
 
 def make_rm(**kwargs) -> RiskManager:
-    cfg = RiskConfig(
+    defaults = dict(
         max_position_pct=0.10,
         max_daily_loss_pct=-0.05,
         max_open_positions=5,
@@ -14,8 +14,9 @@ def make_rm(**kwargs) -> RiskManager:
         min_order_value=10.0,
         max_trades_per_day=10,
         slippage_tolerance_pct=0.02,
-        **kwargs,
     )
+    defaults.update(kwargs)
+    cfg = RiskConfig(**defaults)
     return RiskManager(cfg)
 
 

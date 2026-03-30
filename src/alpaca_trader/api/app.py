@@ -11,6 +11,7 @@ from fastapi.responses import FileResponse
 from dotenv import load_dotenv
 
 from alpaca_trader.core.database import init_db
+from alpaca_trader.core.logging_config import setup_logging
 from alpaca_trader.api.routes import account, orders, options
 from alpaca_trader.api.routes import alerts, monitor, health
 
@@ -20,6 +21,7 @@ load_dotenv()
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Application lifespan: initialize DB on startup."""
+    setup_logging()
     await init_db()
     yield
 

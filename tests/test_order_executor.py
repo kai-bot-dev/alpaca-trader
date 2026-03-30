@@ -223,10 +223,11 @@ class TestSlippageRecording:
         updated = ex.get_order(result.order_id)
         assert updated.status == OrderStatus.FILLED
 
-    def test_record_fill_returns_none_for_unknown_id(self):
+    def test_record_fill_returns_slippage_for_unknown_id(self):
+        """record_fill calculates slippage even if order_id is not found."""
         ex = make_executor()
         slippage = ex.record_fill("unknown-id", fill_price=150.0, signal_price=150.0)
-        assert slippage is None
+        assert slippage == 0.0
 
     def test_record_fill_warns_on_high_slippage(self, caplog):
         import logging

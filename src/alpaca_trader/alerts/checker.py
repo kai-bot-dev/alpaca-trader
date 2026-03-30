@@ -1,11 +1,14 @@
 """AlertChecker — evaluates active alerts against current market state."""
 
-from datetime import date, datetime
+import logging
+from datetime import date, datetime, timezone
 from typing import Optional
 
 from alpaca_trader.core import client as alpaca
 from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
+
+logger = logging.getLogger(__name__)
 
 
 class AlertChecker:
@@ -14,6 +17,7 @@ class AlertChecker:
     async def check_all(self) -> list[dict]:
         """Check all active alerts. Returns list of triggered alert dicts."""
         alerts = await db.alerts_list(status="active")
+        logger.info("Checking alerts", extra={"count": len(alerts)})
         triggered = []
         for alert in alerts:
             result = await self._check_alert(alert)
@@ -23,6 +27,8 @@ class AlertChecker:
                 alert["status"] = "triggered"
                 alert["triggered_at"] = datetime.now(timezone.utc).isoformat()
                 triggered.append(alert)
+        if triggered:
+            logger.info("Alerts triggered", extra={"triggered": len(triggered), "total": len(alerts)})
         return triggered
 
     async def _check_alert(self, alert: dict) -> Optional[str]:

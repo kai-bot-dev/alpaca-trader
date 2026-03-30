@@ -1,11 +1,14 @@
 """ScheduledScanner — runs AlertChecker + watchlist scan and returns formatted results."""
 
+import logging
 from datetime import datetime, timezone
 
 from alpaca_trader.alerts.checker import AlertChecker
 from alpaca_trader.alerts.delivery import TelegramDeliveryQueue
 from alpaca_trader.core import database as db
 from alpaca_trader.strategies.scanner import WatchlistScanner
+
+logger = logging.getLogger(__name__)
 
 
 class ScheduledScanner:
@@ -59,6 +62,12 @@ class ScheduledScanner:
         # 3. Store last scan time
         await db.setting_set("monitor_last_run", completed_at)
         await db.setting_set("monitor_last_triggered_count", str(len(triggered_alerts)))
+
+        logger.info("Scheduled scan complete", extra={
+            "symbols_scanned": len(symbols),
+            "alerts_triggered": len(triggered_alerts),
+            "signals_detected": len(strategy_signals),
+        })
 
         return {
             "started_at": started_at,

@@ -34,7 +34,7 @@ from alpaca_trader.alerts.formatter import format_alert_telegram
 
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Scan and deliver trading alerts.")
-    parser.add_argument("--strategy", default="squeeze", choices=["squeeze", "bounce", "trend"], help="Strategy to use")
+    parser.add_argument("--strategy", default="bb_rsi_reversal", choices=["squeeze", "bounce", "trend", "bb_rsi_reversal"], help="Strategy to use")
     parser.add_argument("--period", default="1D", help="Bar timeframe (1D, 1H, 15Min, 5Min, 1Min)")
     parser.add_argument("--dry-run", action="store_true", help="Scan but don't queue alerts")
     parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")

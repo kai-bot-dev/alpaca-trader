@@ -1,12 +1,15 @@
 """TelegramDeliveryQueue — file-based queue for alert delivery via OpenClaw."""
 
 import json
+import logging
 import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
 _QUEUE_FILE = Path(__file__).resolve().parents[3] / "data" / "alert-queue.json"
+
+logger = logging.getLogger(__name__)
 
 
 def _load_queue() -> list[dict]:
@@ -57,6 +60,7 @@ class TelegramDeliveryQueue:
         }
         queue.append(entry)
         _save_queue(queue)
+        logger.info("Alert queued", extra={"queue_id": queue_id, "symbol": entry["symbol"], "alert_type": entry["alert_type"]})
         return queue_id
 
     def get_pending(self) -> list[dict]:
@@ -76,4 +80,6 @@ class TelegramDeliveryQueue:
                 entry["delivered_at"] = datetime.now(timezone.utc).isoformat()
                 updated += 1
         _save_queue(queue)
+        if updated:
+            logger.info("Alerts delivered", extra={"delivered_count": updated})
         return updated

@@ -1,4 +1,5 @@
 """Watchlist scanner — runs a strategy across all symbols in the watchlist."""
+import logging
 
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -13,6 +14,8 @@ from alpaca_trader.strategies.squeeze import SqueezeDetector
 from alpaca_trader.strategies.bounce import BounceDetector
 from alpaca_trader.strategies.trend import TrendDetector
 from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -51,6 +54,7 @@ class WatchlistScanner:
         Returns:
             List of Signal objects, sorted by detected=True first
         """
+        logger.info("Starting scan", extra={"strategy": strategy, "symbol_count": len(symbols), "period": period})
         results = []
         for symbol in symbols:
             signal = self._scan_symbol(symbol, strategy, period, limit)
@@ -58,6 +62,11 @@ class WatchlistScanner:
 
         # Sort: detected signals first
         results.sort(key=lambda s: (not s.detected, s.symbol))
+        detected = [r for r in results if r.detected]
+        if detected:
+            logger.info("Scan complete", extra={"strategy": strategy, "detected": len(detected), "total": len(results)})
+        else:
+            logger.debug("Scan complete — no signals", extra={"strategy": strategy, "total": len(results)})
         return results
 
     def _scan_symbol(
@@ -73,6 +82,7 @@ class WatchlistScanner:
         except EnvironmentError:
             raise
         except Exception as e:
+            logger.warning("Scan error", extra={"symbol": symbol, "strategy": strategy, "error": str(e)})
             return Signal(
                 symbol=symbol, strategy=strategy, detected=False,
                 direction="none", strength=0.0,
