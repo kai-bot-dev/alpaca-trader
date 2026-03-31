@@ -12,18 +12,18 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 ## Priority Queue
 
 ### High Priority
-- [ ] Add unit tests for RiskManager (position sizing, circuit breakers)
-- [ ] Add unit tests for OrderExecutor (limit orders, retries, slippage)
-- [ ] Add unit tests for PositionManager (stop-loss, take-profit, trailing stop)
-- [ ] Add unit tests for AutoTrader orchestrator (signal → risk → order pipeline)
+- ✅ Add unit tests for RiskManager (position sizing, circuit breakers) (2026-03-30, pre-existing)
+- ✅ Add unit tests for OrderExecutor (limit orders, retries, slippage) (2026-03-30, pre-existing)
+- ✅ Add unit tests for PositionManager (stop-loss, take-profit, trailing stop) (2026-03-30, pre-existing)
+- ✅ Add unit tests for AutoTrader orchestrator (signal → risk → order pipeline) (2026-03-31)
 - ✅ Fix DeprecationWarning: replace `datetime.utcnow()` with `datetime.now(datetime.UTC)` everywhere (2026-03-27)
 - ✅ Add error handling for Alpaca API rate limits (429 responses) in client.py (2026-03-27)
 - ✅ Add retry logic with exponential backoff for network failures in scanner (2026-03-27)
 
 ### Medium Priority
-- [ ] Add integration test: full scan → signal → auto-trade pipeline (mocked API)
+- ✅ Add integration test: full scan → signal → auto-trade pipeline (mocked API) (2026-03-31)
 - [x] Improve logging: add structured logging (JSON) throughout the trading pipeline (2026-03-30)
-- [ ] Add type hints to all public functions that are missing them
+- ✅ Add type hints to all public functions that are missing them (2026-03-31)
 - [x] Create a health check endpoint in FastAPI (/api/health) with system status (2026-03-28)
 - [x] Add docstrings to all strategy detector classes (2026-03-28)
 - [ ] Refactor scanner.py to use async properly (currently blocking in sync scan loop)
@@ -44,6 +44,17 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - [ ] Historical P&L charting on dashboard
 
 ## Completed
+
+- ✅ Expand AutoTrader pipeline tests + type hints (2026-03-31)
+  - Added 12 new pipeline tests: single signal entry, no signal, risk rejection, skip held symbol,
+    strongest strategy wins, multi-symbol entries, trade count tracking, empty watchlist
+  - Added 3 exit pipeline tests: stop-loss, healthy hold, take-profit
+  - Added daily trade limit test
+  - Added return type hint to get_stock_bars_df() -> pd.DataFrame
+  - Verified all other public functions already have type hints (only CLI/Typer commands omit them by convention)
+  - Recognized that RiskManager (37 tests), OrderExecutor (24 tests), PositionManager (19 tests) already had comprehensive coverage
+  - Total tests: 293 -> 305
+
 - ✅ Improve logging: add structured JSON logging (2026-03-30)
   - Created core/logging_config.py with JSONFormatter and HumanFormatter
   - Auto-detects TTY (text for CLI) vs non-interactive (JSON for cron/pipes)
