@@ -573,7 +573,7 @@ def get_stock_bars_df(
     limit: int = 100,
     start: Optional[datetime] = None,
     end: Optional[datetime] = None,
-):
+) -> "pd.DataFrame":
     """Fetch historical bars and return as a pandas DataFrame with OHLCV columns."""
     import pandas as pd
     bars = get_stock_bars(symbol, period=period, limit=limit, start=start, end=end)
