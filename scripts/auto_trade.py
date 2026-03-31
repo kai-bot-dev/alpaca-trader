@@ -1,26 +1,5 @@
 #!/usr/bin/env python3
-"""Auto-trade cron script.
-
-Runs every 5 minutes during market hours (9:30 AM - 4:00 PM ET / 6:30 AM - 1:00 PM PT).
-
-Steps:
-1. Check if market is open (9:30–16:00 ET, Mon-Fri)
-2. Run AutoTrader.run_cycle()
-3. Output summary for Telegram alert delivery
-4. Records equity snapshot
-
-Output convention (for OpenClaw cron):
-- "TRADE_OK" → cycle ran, nothing to report
-- Alert text lines → queued for Telegram delivery
-- "MARKET_CLOSED" → market not open, no action taken
-- "DISABLED" → auto-trader not enabled
-- "ERROR: ..." → error during cycle
-
-Usage:
-    python scripts/auto_trade.py
-    python scripts/auto_trade.py --dry-run
-    python scripts/auto_trade.py --format json
-"""
+"""Auto-trade cron script — runs every 5 min during market hours."""
 
 import argparse
 import asyncio
@@ -29,31 +8,70 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
-# Allow running from repo root without installing the package
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from alpaca_trader.core import database as db
 from alpaca_trader.engine.auto_trader import AutoTrader, is_market_open
 
 
+async def check_stock_exits(dry_run: bool) -> dict:
+    """Always check stock positions for exits, regardless of trading mode."""
+    result = {"exits_executed": 0, "exits": [], "errors": []}
+    try:
+        from alpaca_trader.core import client as alpaca
+        from alpaca_trader.engine.position_manager import PositionManager
+        from alpaca_trader.engine.trade_journal import TradeJournal
+        from alpaca_trader.engine.order_executor import OrderExecutor, ExecutorConfig
+
+        positions = alpaca.get_positions()
+        # Stock positions have short symbols (<=5 chars), options are longer
+        stock_positions = [p for p in positions if len(p.get("symbol", "")) <= 5]
+        if not stock_positions:
+            return result
+
+        pm = PositionManager()
+        journal = TradeJournal()
+        open_trades = await journal.get_trades(status="open", limit=200)
+        stock_exits = pm.check_exits(stock_positions, journal_entries=open_trades)
+        executor = OrderExecutor(config=ExecutorConfig(dry_run=dry_run))
+
+        for exit_pos in stock_exits:
+            sym = exit_pos.get("symbol", "")
+            qty = int(float(exit_pos.get("qty") or 0))
+            reason = exit_pos.get("exit_reason", "")
+            if qty <= 0:
+                continue
+            order = executor.place_market_order(sym, qty, "sell")
+            if order.success:
+                result["exits_executed"] += 1
+                result["exits"].append(f"{sym} ({reason})")
+                current_price = float(exit_pos.get("current_price") or 0)
+                open_trade = await journal.get_open_trade_for_symbol(sym)
+                if open_trade:
+                    await journal.log_exit(open_trade["id"], current_price, reason)
+            else:
+                result["errors"].append(f"Exit failed for {sym}: {order.error}")
+    except Exception as ex:
+        result["errors"].append(f"Stock exit check: {ex}")
+    return result
+
+
 async def main() -> None:
     parser = argparse.ArgumentParser(description="Auto-trade cron job.")
-    parser.add_argument("--dry-run", action="store_true", help="Force dry-run mode (no real orders)")
-    parser.add_argument("--format", choices=["text", "json"], default="text", help="Output format")
-    parser.add_argument("--force", action="store_true", help="Run even if market is closed (testing)")
+    parser.add_argument("--dry-run", action="store_true", help="Force dry-run mode")
+    parser.add_argument("--format", choices=["text", "json"], default="text")
+    parser.add_argument("--force", action="store_true", help="Run even if market closed")
     args = parser.parse_args()
 
     await db.init_db()
 
-    # Check market hours unless forced
     if not args.force and not is_market_open():
         if args.format == "json":
-            print(json.dumps({"status": "market_closed", "time": datetime.now(timezone.utc).isoformat()}))
+            print(json.dumps({"status": "market_closed"}))
         else:
             print("MARKET_CLOSED")
         return
 
-    # Determine trading mode
     trading_mode = await db.setting_get("trading_mode") or "stocks"
 
     if trading_mode == "options":
@@ -62,7 +80,6 @@ async def main() -> None:
     else:
         trader = AutoTrader(dry_run=args.dry_run)
 
-    # Quick check: is it enabled?
     enabled = await trader.is_enabled()
     if not enabled:
         if args.format == "json":
@@ -80,7 +97,12 @@ async def main() -> None:
             print(f"ERROR: {e}")
         sys.exit(1)
 
-    # Record equity snapshot if we have account access
+    # Always manage stock exits even in options mode
+    stock_exit_result = await check_stock_exits(dry_run=args.dry_run)
+    summary["exits_executed"] = summary.get("exits_executed", 0) + stock_exit_result["exits_executed"]
+    summary.setdefault("errors", []).extend(stock_exit_result.get("errors", []))
+
+    # Record equity snapshot
     try:
         from alpaca_trader.core import client as alpaca
         account = alpaca.get_account()
@@ -92,34 +114,30 @@ async def main() -> None:
             "timestamp": datetime.now(timezone.utc).isoformat(),
         }))
     except Exception:
-        pass  # Non-critical
+        pass
 
-    # Build output
     entries = summary.get("entries_executed", 0)
     exits = summary.get("exits_executed", 0)
     errors = summary.get("errors", [])
 
     if args.format == "json":
-        print(json.dumps({
-            "status": "ok",
-            "summary": summary,
-        }, indent=2))
+        print(json.dumps({"status": "ok", "summary": summary}, indent=2))
         return
 
-    # Text output: only print something actionable for Telegram
     lines = []
-
     if entries > 0 or exits > 0:
         parts = []
         if entries > 0:
             parts.append(f"{entries} entr{'y' if entries == 1 else 'ies'} executed")
         if exits > 0:
             parts.append(f"{exits} exit{'s' if exits != 1 else ''} executed")
-        lines.append(f"AutoTrader cycle: {', '.join(parts)}")
+        lines.append(f"AutoTrader [{trading_mode}]: {', '.join(parts)}")
+        for ex in stock_exit_result.get("exits", []):
+            lines.append(f"  SOLD: {ex}")
 
     if errors:
         for err in errors:
-            lines.append(f"AutoTrader WARNING: {err}")
+            lines.append(f"WARNING: {err}")
 
     if lines:
         print("\n".join(lines))

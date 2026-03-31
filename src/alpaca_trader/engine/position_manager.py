@@ -32,11 +32,11 @@ class PositionManager:
 
     def __init__(
         self,
-        stop_loss_pct: float = -0.30,
-        take_profit_pct: float = 0.50,
-        trailing_stop_trigger: float = 0.25,
-        trailing_stop_pct: float = 0.15,
-        max_hold_days: int = 30,
+        stop_loss_pct: float = -0.05,
+        take_profit_pct: float = 0.08,
+        trailing_stop_trigger: float = 0.04,
+        trailing_stop_pct: float = 0.02,
+        max_hold_days: int = 10,
     ) -> None:
         self.stop_loss_pct = stop_loss_pct
         self.take_profit_pct = take_profit_pct
