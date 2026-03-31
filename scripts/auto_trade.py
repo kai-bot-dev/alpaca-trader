@@ -23,6 +23,13 @@ async def check_stock_exits(dry_run: bool) -> dict:
         from alpaca_trader.engine.trade_journal import TradeJournal
         from alpaca_trader.engine.order_executor import OrderExecutor, ExecutorConfig
 
+        # Load skip list — symbols that failed with "not active" / "not tradable"
+        skip_raw = await db.setting_get("exit_skip_symbols") or "[]"
+        try:
+            skip_symbols: list[str] = json.loads(skip_raw)
+        except (json.JSONDecodeError, TypeError):
+            skip_symbols = []
+
         positions = alpaca.get_positions()
         # Stock positions have short symbols (<=5 chars), options are longer
         stock_positions = [p for p in positions if len(p.get("symbol", "")) <= 5]
@@ -35,11 +42,16 @@ async def check_stock_exits(dry_run: bool) -> dict:
         stock_exits = pm.check_exits(stock_positions, journal_entries=open_trades)
         executor = OrderExecutor(config=ExecutorConfig(dry_run=dry_run))
 
+        skip_symbols_updated = False
         for exit_pos in stock_exits:
             sym = exit_pos.get("symbol", "")
             qty = int(float(exit_pos.get("qty") or 0))
             reason = exit_pos.get("exit_reason", "")
             if qty <= 0:
+                continue
+            # Skip symbols known to be inactive/untradable
+            if sym in skip_symbols:
+                result["errors"].append(f"Skipping {sym}: marked as inactive/not tradable")
                 continue
             order = executor.place_market_order(sym, qty, "sell")
             if order.success:
@@ -50,7 +62,21 @@ async def check_stock_exits(dry_run: bool) -> dict:
                 if open_trade:
                     await journal.log_exit(open_trade["id"], current_price, reason)
             else:
-                result["errors"].append(f"Exit failed for {sym}: {order.error}")
+                err_lower = (order.error or "").lower()
+                if "not active" in err_lower or "not tradable" in err_lower or "asset" in err_lower:
+                    # Permanently skip this symbol until manually cleared
+                    if sym not in skip_symbols:
+                        skip_symbols.append(sym)
+                        skip_symbols_updated = True
+                    result["errors"].append(
+                        f"Exit skipped for {sym} (inactive asset — added to skip list): {order.error}"
+                    )
+                else:
+                    result["errors"].append(f"Exit failed for {sym}: {order.error}")
+
+        if skip_symbols_updated:
+            await db.setting_set("exit_skip_symbols", json.dumps(skip_symbols))
+
     except Exception as ex:
         result["errors"].append(f"Stock exit check: {ex}")
     return result
