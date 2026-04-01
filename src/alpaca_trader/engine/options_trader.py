@@ -15,6 +15,8 @@ from alpaca_trader.engine.trade_journal import TradeJournal
 from alpaca_trader.engine.strike_selector import StrikeSelector
 from alpaca_trader.strategies.scanner import WatchlistScanner
 from alpaca_trader.strategies.regime import get_market_regime
+from alpaca_trader.strategies.iv_rank import get_iv_rank
+from alpaca_trader.strategies.earnings_filter import check_earnings
 
 logger = logging.getLogger(__name__)
 
@@ -25,6 +27,37 @@ _MARKET_CLOSE = dtime(16, 0)
 MAX_CONCURRENT_OPTION_POSITIONS = 5
 MAX_PREMIUM_PCT = 0.02  # 2% of portfolio per trade
 MAX_TOTAL_PREMIUM_PCT = 0.10  # 10% of portfolio total options exposure
+
+# Correlation groups — max 1 position per group
+CORRELATION_GROUPS = {
+    'mega_tech': {'AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN'},
+    'semiconductors': {'NVDA', 'AMD', 'ARM'},
+    'index_etfs': {'SPY', 'QQQ'},
+    'ev_momentum': {'TSLA'},
+    'fintech': {'SQ', 'SOFI', 'COIN'},
+    'social_media': {'SNAP', 'ROKU'},
+    'crypto_adjacent': {'COIN', 'MARA'},
+    'retail': {'SHOP', 'UBER'},
+}
+
+
+def get_correlation_group(symbol: str) -> Optional[str]:
+    """Return the correlation group for a symbol, or None if not in any group."""
+    for group, members in CORRELATION_GROUPS.items():
+        if symbol.upper() in members:
+            return group
+    return None
+
+
+def _conviction_size(contracts: int, strength: float) -> int:
+    """Scale contract count by signal strength (conviction-based sizing)."""
+    if strength >= 0.7:
+        factor = 1.0
+    elif strength >= 0.4:
+        factor = 0.6
+    else:
+        factor = 0.3
+    return max(1, int(contracts * factor))
 
 
 def is_market_open(now: Optional[datetime] = None) -> bool:
@@ -257,6 +290,38 @@ class OptionsTrader:
         open_option_symbols = {(p.get("symbol") or "").upper() for p in positions}
         open_positions_count = len(positions)
 
+        # Compute portfolio theta limit (sum of |theta| * 100 per contract across open positions)
+        total_daily_theta = 0.0
+        for jt in open_journal:
+            t = jt.get("theta_at_entry") or 0.0
+            c = jt.get("contracts") or 1
+            total_daily_theta += abs(float(t)) * 100 * int(c)
+        theta_limit = portfolio_value * 0.005  # 0.5% of portfolio per day
+
+        if total_daily_theta > theta_limit:
+            logger.info(
+                "OptionsTrader: portfolio theta limit reached (%.2f/day > limit %.2f)",
+                total_daily_theta, theta_limit,
+            )
+            summary["errors"].append(
+                f"portfolio theta limit reached ({total_daily_theta:.2f}/day)"
+            )
+            return summary
+
+        # Build set of underlying symbols in open positions for correlation checks
+        open_underlying_symbols: set[str] = set()
+        for p in positions:
+            sym = (p.get("symbol") or "").upper()
+            # Option symbols are like AAPL251219C00150000 — extract underlying (letters prefix)
+            underlying_guess = ""
+            for ch in sym:
+                if ch.isalpha():
+                    underlying_guess += ch
+                else:
+                    break
+            if underlying_guess:
+                open_underlying_symbols.add(underlying_guess)
+
         for signal in actionable:
             underlying = signal.symbol
             if open_positions_count >= MAX_CONCURRENT_OPTION_POSITIONS:
@@ -287,6 +352,59 @@ class OptionsTrader:
                         )
                         continue
 
+                # Correlation limiter — skip if already holding a correlated position
+                corr_group = get_correlation_group(underlying)
+                if corr_group is not None:
+                    corr_collision = False
+                    for held_sym in open_underlying_symbols:
+                        held_group = get_correlation_group(held_sym)
+                        if held_group == corr_group:
+                            logger.info(
+                                "OptionsTrader: skipping %s, already holding correlated position in %s",
+                                underlying, corr_group,
+                            )
+                            corr_collision = True
+                            break
+                    if corr_collision:
+                        continue
+
+                # Earnings filter — skip if near earnings event
+                try:
+                    earnings_check = await check_earnings(underlying)
+                    if earnings_check.should_skip:
+                        logger.info(
+                            "OptionsTrader: skipping %s — earnings filter: %s",
+                            underlying, earnings_check.reason,
+                        )
+                        continue
+                except Exception as _e:
+                    logger.warning("OptionsTrader: earnings check failed for %s: %s", underlying, _e)
+
+                # IV Rank filter — skip if IV too expensive; reduce size if mid-range
+                iv_size_factor = 1.0
+                try:
+                    iv_result = await get_iv_rank(underlying)
+                    if iv_result.is_expensive:
+                        logger.info(
+                            "OptionsTrader: skipping %s, IV too expensive (rank=%.1f)",
+                            underlying, iv_result.iv_rank,
+                        )
+                        continue
+                    elif not iv_result.is_cheap:
+                        # IV rank 40-60: proceed with 75% size
+                        iv_size_factor = 0.75
+                        logger.info(
+                            "OptionsTrader: %s IV rank=%.1f (neutral) — reducing size to 75%%",
+                            underlying, iv_result.iv_rank,
+                        )
+                    else:
+                        logger.info(
+                            "OptionsTrader: %s IV rank=%.1f (cheap) — full size",
+                            underlying, iv_result.iv_rank,
+                        )
+                except Exception as _e:
+                    logger.warning("OptionsTrader: IV rank check failed for %s: %s", underlying, _e)
+
                 from alpaca_trader.core import client as alpaca
                 expiry_gte, expiry_lte = _get_chain_expiry_range()
                 chain = alpaca.get_option_chain(
@@ -308,6 +426,12 @@ class OptionsTrader:
                 option_symbol = contract["symbol"]
                 ask_price = contract["ask"]
                 contracts_qty = contract["contracts_to_buy"]
+
+                # Conviction-based sizing by signal strength
+                contracts_qty = _conviction_size(contracts_qty, signal.strength)
+
+                # IV rank size factor (75% if IV rank 40-60)
+                contracts_qty = max(1, int(contracts_qty * iv_size_factor))
 
                 # Neutral regime: reduce position size by 50%
                 if market_regime is not None and market_regime.regime == "neutral":
@@ -343,6 +467,7 @@ class OptionsTrader:
                     self._trades_today += 1
                     open_positions_count += 1
                     open_option_symbols.add(option_symbol.upper())
+                    open_underlying_symbols.add(underlying.upper())
 
                     trade_id = await self.trade_journal.log_entry(
                         symbol=underlying,
