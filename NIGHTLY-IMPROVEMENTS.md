@@ -26,13 +26,13 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - ✅ Add type hints to all public functions that are missing them (2026-03-31)
 - [x] Create a health check endpoint in FastAPI (/api/health) with system status (2026-03-28)
 - [x] Add docstrings to all strategy detector classes (2026-03-28)
-- [ ] Refactor scanner.py to use async properly (currently blocking in sync scan loop)
+- ✅ Refactor scanner.py to use async properly (currently blocking in sync scan loop) (2026-04-01)
 
 ### Low Priority
 - [ ] Add mypy strict checking and fix type errors
 - [ ] Add pre-commit hooks (ruff, mypy)
 - [ ] Improve CLI output formatting consistency
-- [ ] Add --verbose flag to all CLI commands
+- ✅ Add --verbose flag to all CLI commands (2026-04-01)
 - [ ] Dashboard: add loading spinners for API calls
 - [ ] Dashboard: add error toast notifications
 
@@ -44,6 +44,13 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - [ ] Historical P&L charting on dashboard
 
 ## Completed
+- ✅ Async scanner refactor + CLI --verbose flag (2026-04-01)
+  - Added scan_async() to WatchlistScanner with asyncio.to_thread + semaphore (MAX_CONCURRENCY=5)
+  - Updated ScheduledScanner to use scan_async() for concurrent scheduled scans
+  - Sync scan() preserved for backward compat (CLI, AutoTrader)
+  - Added global --verbose/-v flag to CLI (sets log level to DEBUG)
+  - 9 new tests in test_scanner_async.py (async/sync parity, concurrency, semaphore, edge cases)
+  - Total tests: 305 -> 314
 
 - ✅ Expand AutoTrader pipeline tests + type hints (2026-03-31)
   - Added 12 new pipeline tests: single signal entry, no signal, risk rejection, skip held symbol,
