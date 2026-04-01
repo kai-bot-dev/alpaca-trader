@@ -266,6 +266,8 @@ def get_option_snapshots(symbols: list[str]) -> dict:
 def get_option_chain(
     underlying_symbol: str,
     expiration_date: Optional[date] = None,
+    expiration_date_gte: Optional[date] = None,
+    expiration_date_lte: Optional[date] = None,
     option_type: Optional[str] = None,
     strike_price_gte: Optional[float] = None,
     strike_price_lte: Optional[float] = None,
@@ -276,6 +278,8 @@ def get_option_chain(
     contracts = get_options_contracts(
         underlying_symbol=underlying_symbol,
         expiration_date=expiration_date,
+        expiration_date_gte=expiration_date_gte,
+        expiration_date_lte=expiration_date_lte,
         strike_price_gte=strike_price_gte,
         strike_price_lte=strike_price_lte,
         option_type=option_type,
@@ -321,10 +325,11 @@ def get_option_chain(
         # Extract quote data
         latest_quote = snap.get("latest_quote", {})
         if latest_quote:
-            merged["bid_price"] = latest_quote.get("bp")
-            merged["ask_price"] = latest_quote.get("ap")
-            merged["bid_size"] = latest_quote.get("bs")
-            merged["ask_size"] = latest_quote.get("as")
+            # Field names may be "bid_price"/"ask_price" (enriched) or "bp"/"ap" (raw)
+            merged["bid_price"] = latest_quote.get("bid_price") or latest_quote.get("bp")
+            merged["ask_price"] = latest_quote.get("ask_price") or latest_quote.get("ap")
+            merged["bid_size"] = latest_quote.get("bid_size") or latest_quote.get("bs")
+            merged["ask_size"] = latest_quote.get("ask_size") or latest_quote.get("as")
 
         # Extract trade data
         latest_trade = snap.get("latest_trade", {})

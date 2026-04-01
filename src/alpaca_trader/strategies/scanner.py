@@ -15,6 +15,7 @@ from alpaca_trader.strategies.squeeze import SqueezeDetector
 from alpaca_trader.strategies.bounce import BounceDetector
 from alpaca_trader.strategies.trend import TrendDetector
 from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector
+from alpaca_trader.strategies.momentum import MomentumDetector
 
 logger = logging.getLogger(__name__)
 
@@ -150,7 +151,7 @@ class WatchlistScanner:
                 details={"error": str(e)}, timestamp=timestamp,
             )
 
-        if df.empty or len(df) < 21:
+        if df.empty or len(df) < 15:
             return Signal(
                 symbol=symbol, strategy=strategy, detected=False,
                 direction="none", strength=0.0,
@@ -210,6 +211,21 @@ class WatchlistScanner:
                         "target": round(sig.target_price, 2),
                         "stop": round(sig.stop_price, 2),
                         "risk_reward": round(sig.risk_reward, 2),
+                    },
+                    timestamp=timestamp,
+                )
+            elif strategy == "momentum":
+                detector = MomentumDetector()
+                sig = detector.detect(df)
+                return Signal(
+                    symbol=symbol, strategy=strategy,
+                    detected=sig.detected, direction=sig.direction,
+                    strength=sig.strength,
+                    details={
+                        "rsi": round(sig.rsi, 1),
+                        "ema_fast": round(sig.ema_fast, 4),
+                        "ema_slow": round(sig.ema_slow, 4),
+                        "sma": round(sig.sma, 4),
                     },
                     timestamp=timestamp,
                 )

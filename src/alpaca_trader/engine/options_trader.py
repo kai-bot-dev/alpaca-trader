@@ -217,7 +217,7 @@ class OptionsTrader:
             return summary
 
         best_by_symbol: dict[str, object] = {}
-        for strategy in ("bb_rsi_reversal", "bounce", "squeeze"):
+        for strategy in ("bb_rsi_reversal", "bounce", "squeeze", "momentum"):
             try:
                 for s in self.scanner.scan(symbols, strategy=strategy, period="1D"):
                     if s.detected:
@@ -254,7 +254,7 @@ class OptionsTrader:
                 continue
 
             try:
-                direction = "long" if signal.details.get("direction", "long") == "long" else "short"
+                direction = "long" if signal.direction == "long" else "short"
                 option_type = "call" if direction == "long" else "put"
 
                 from alpaca_trader.core import client as alpaca
