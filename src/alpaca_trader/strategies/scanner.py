@@ -1,5 +1,6 @@
 """Watchlist scanner — runs a strategy across all symbols in the watchlist."""
 import asyncio
+import concurrent.futures
 import logging
 
 from dataclasses import dataclass, field
@@ -140,7 +141,18 @@ class WatchlistScanner:
     ) -> Signal:
         timestamp = datetime.now(timezone.utc).isoformat()
         try:
-            df = alpaca.get_stock_bars_df(symbol, period=period, limit=limit)
+            # Use a thread with timeout to prevent hanging on Alpaca API calls
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(alpaca.get_stock_bars_df, symbol, period=period, limit=limit)
+                df = future.result(timeout=15)  # 15 second timeout per symbol
+        except concurrent.futures.TimeoutError:
+            logger.warning("Scan timeout", extra={"symbol": symbol, "strategy": strategy, "period": period})
+            return Signal(
+                symbol=symbol, strategy=strategy, detected=False,
+                direction="none", strength=0.0,
+                details={"error": f"API timeout after 15s"},
+                timestamp=timestamp,
+            )
         except EnvironmentError:
             raise
         except Exception as e:

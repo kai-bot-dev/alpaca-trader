@@ -14,6 +14,7 @@ from alpaca_trader.engine.options_position_manager import OptionsPositionManager
 from alpaca_trader.engine.trade_journal import TradeJournal
 from alpaca_trader.engine.strike_selector import StrikeSelector
 from alpaca_trader.strategies.scanner import WatchlistScanner
+from alpaca_trader.strategies.regime import get_market_regime
 
 logger = logging.getLogger(__name__)
 
@@ -37,10 +38,10 @@ def is_market_open(now: Optional[datetime] = None) -> bool:
 
 
 def _get_chain_expiry_range():
-    """Return (gte, lte) date range for 5-14 DTE options."""
+    """Return (gte, lte) date range for 4-8 DTE options."""
     from datetime import date
     today = date.today()
-    return today + timedelta(days=5), today + timedelta(days=14)
+    return today + timedelta(days=4), today + timedelta(days=8)
 
 
 class OptionsTrader:
@@ -148,6 +149,19 @@ class OptionsTrader:
             summary["errors"].append(f"Circuit breaker: {self.risk_manager._circuit_broken_reason}")
             return summary
 
+        # Check market regime
+        try:
+            market_regime = get_market_regime()
+            summary["market_regime"] = market_regime.regime
+            summary["regime_confidence"] = round(market_regime.confidence, 2)
+            logger.info(
+                "OptionsTrader: market regime=%s rsi=%.1f confidence=%.2f",
+                market_regime.regime, market_regime.spy_rsi, market_regime.confidence,
+            )
+        except Exception as e:
+            summary["errors"].append(f"Regime check failed: {e}")
+            market_regime = None
+
         # Fetch account
         try:
             from alpaca_trader.core import client as alpaca
@@ -217,7 +231,7 @@ class OptionsTrader:
             return summary
 
         best_by_symbol: dict[str, object] = {}
-        for strategy in ("bb_rsi_reversal", "bounce", "squeeze", "momentum"):
+        for strategy in ("bounce", "bb_rsi_reversal", "momentum", "squeeze"):
             try:
                 for s in self.scanner.scan(symbols, strategy=strategy, period="1D"):
                     if s.detected:
@@ -257,6 +271,22 @@ class OptionsTrader:
                 direction = "long" if signal.direction == "long" else "short"
                 option_type = "call" if direction == "long" else "put"
 
+                # Regime filter: skip entries that don't match market regime
+                if market_regime is not None:
+                    regime = market_regime.regime
+                    if regime == "bearish" and direction == "long":
+                        logger.info(
+                            "OptionsTrader: skipping %s long — bearish regime",
+                            underlying,
+                        )
+                        continue
+                    if regime == "bullish" and direction == "short":
+                        logger.info(
+                            "OptionsTrader: skipping %s short — bullish regime",
+                            underlying,
+                        )
+                        continue
+
                 from alpaca_trader.core import client as alpaca
                 expiry_gte, expiry_lte = _get_chain_expiry_range()
                 chain = alpaca.get_option_chain(
@@ -278,6 +308,15 @@ class OptionsTrader:
                 option_symbol = contract["symbol"]
                 ask_price = contract["ask"]
                 contracts_qty = contract["contracts_to_buy"]
+
+                # Neutral regime: reduce position size by 50%
+                if market_regime is not None and market_regime.regime == "neutral":
+                    contracts_qty = max(1, contracts_qty // 2)
+                    logger.info(
+                        "OptionsTrader: neutral regime — halved contracts to %d for %s",
+                        contracts_qty, option_symbol,
+                    )
+
                 option_value = ask_price * 100 * contracts_qty
 
                 # Risk check on the premium cost

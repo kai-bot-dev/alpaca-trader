@@ -89,7 +89,7 @@ class TestDeltaFilter:
         assert result is None
 
     def test_delta_too_high_filtered(self):
-        chain = [make_contract(delta=0.70)]
+        chain = [make_contract(delta=0.85)]
         sel = StrikeSelector()
         result = sel.select_contract("X", "long", chain)
         assert result is None

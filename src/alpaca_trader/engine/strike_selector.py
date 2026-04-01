@@ -22,13 +22,13 @@ _W_THETA = 0.30
 _W_OI = 0.20
 _W_SPREAD = 0.10
 
-_IDEAL_DELTA = 0.45
+_IDEAL_DELTA = 0.60
 _MIN_DELTA = 0.20
-_MAX_DELTA = 0.65
+_MAX_DELTA = 0.80
 _MIN_OI = 1
 _MAX_SPREAD_PCT = 0.40
-_MIN_DTE = 5
-_MAX_DTE = 14
+_MIN_DTE = 4
+_MAX_DTE = 8
 _MAX_THETA_BURN = 0.10
 _MAX_CONTRACTS = 10
 _MIN_CONTRACTS = 1
@@ -74,8 +74,8 @@ def _fetch_chain(underlying, direction, stock_price):
     from alpaca_trader.core import client as alpaca
     option_type = "call" if direction == "long" else "put"
     today = date.today()
-    exp_gte = today + timedelta(days=7)
-    exp_lte = today + timedelta(days=14)
+    exp_gte = today + timedelta(days=4)
+    exp_lte = today + timedelta(days=8)
     if direction == "long":
         strike_gte = stock_price * 0.95
         strike_lte = stock_price * 1.10
@@ -97,8 +97,8 @@ def _fetch_chain(underlying, direction, stock_price):
     except Exception as e:
         logger.warning("StrikeSelector: narrow chain fetch failed for %s: %s", underlying, e)
     logger.info("StrikeSelector: trying wider expiry window for %s", underlying)
-    exp_gte = today + timedelta(days=5)
-    exp_lte = today + timedelta(days=21)
+    exp_gte = today + timedelta(days=3)
+    exp_lte = today + timedelta(days=14)
     try:
         chain = alpaca.get_option_chain(
             underlying_symbol=underlying,
