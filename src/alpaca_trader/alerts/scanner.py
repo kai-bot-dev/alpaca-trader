@@ -16,6 +16,9 @@ class ScheduledScanner:
 
     Designed to be called every 15 minutes during market hours.
     Returns a dict with triggered alerts, strategy signals, and metadata.
+
+    Uses the async scanner (``scan_async``) for concurrent symbol fetching,
+    which significantly reduces wall-clock time for large watchlists.
     """
 
     async def run(self) -> dict:
@@ -32,7 +35,7 @@ class ScheduledScanner:
             for alert in triggered_alerts:
                 delivery.queue_alert(alert, context=alert.get("condition") or {})
 
-        # 2b. Scan watchlist with all strategies
+        # 2b. Scan watchlist with all strategies (concurrently)
         watchlist_items = await db.watchlist_list()
         symbols = [item["symbol"] for item in watchlist_items]
 
@@ -41,7 +44,7 @@ class ScheduledScanner:
             scanner = WatchlistScanner()
             try:
                 for strategy in ("squeeze", "bounce", "trend", "bb_rsi_reversal"):
-                    signals = scanner.scan(symbols, strategy=strategy)
+                    signals = await scanner.scan_async(symbols, strategy=strategy)
                     for sig in signals:
                         if sig.detected:
                             strategy_signals.append({

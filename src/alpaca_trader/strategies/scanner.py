@@ -1,4 +1,5 @@
 """Watchlist scanner — runs a strategy across all symbols in the watchlist."""
+import asyncio
 import logging
 
 from dataclasses import dataclass, field
@@ -34,7 +35,14 @@ class WatchlistScanner:
 
     Fetches historical bars from Alpaca, runs the strategy, and returns
     a list of Signal objects (one per symbol).
+
+    Supports both sync and async usage:
+    - ``scan()`` — synchronous (blocking), for CLI and backward compat
+    - ``scan_async()`` — async, fetches bars concurrently via asyncio
     """
+
+    # Maximum concurrent API calls to avoid rate-limiting
+    MAX_CONCURRENCY: int = 5
 
     def scan(
         self,
@@ -43,11 +51,11 @@ class WatchlistScanner:
         period: str = "1D",
         limit: int = 60,
     ) -> list[Signal]:
-        """Run a strategy scan across all symbols.
+        """Run a strategy scan across all symbols (synchronous).
 
         Args:
             symbols: List of ticker symbols to scan
-            strategy: One of 'squeeze', 'bounce', 'trend'
+            strategy: One of 'squeeze', 'bounce', 'trend', 'bb_rsi_reversal'
             period: Bar timeframe ('1D', '1H', '15Min', '5Min', '1Min')
             limit: Number of historical bars to fetch per symbol
 
@@ -60,13 +68,66 @@ class WatchlistScanner:
             signal = self._scan_symbol(symbol, strategy, period, limit)
             results.append(signal)
 
-        # Sort: detected signals first
         results.sort(key=lambda s: (not s.detected, s.symbol))
         detected = [r for r in results if r.detected]
         if detected:
             logger.info("Scan complete", extra={"strategy": strategy, "detected": len(detected), "total": len(results)})
         else:
             logger.debug("Scan complete — no signals", extra={"strategy": strategy, "total": len(results)})
+        return results
+
+    async def scan_async(
+        self,
+        symbols: list[str],
+        strategy: str,
+        period: str = "1D",
+        limit: int = 60,
+    ) -> list[Signal]:
+        """Run a strategy scan across all symbols concurrently (async).
+
+        Uses ``asyncio.to_thread`` to run blocking Alpaca API calls in a
+        thread pool, bounded by a semaphore to avoid rate-limit issues.
+
+        Args:
+            symbols: List of ticker symbols to scan
+            strategy: One of 'squeeze', 'bounce', 'trend', 'bb_rsi_reversal'
+            period: Bar timeframe ('1D', '1H', '15Min', '5Min', '1Min')
+            limit: Number of historical bars to fetch per symbol
+
+        Returns:
+            List of Signal objects, sorted by detected=True first
+        """
+        logger.info(
+            "Starting async scan",
+            extra={"strategy": strategy, "symbol_count": len(symbols), "period": period},
+        )
+
+        semaphore = asyncio.Semaphore(self.MAX_CONCURRENCY)
+
+        async def _bounded_scan(sym: str) -> Signal:
+            async with semaphore:
+                return await asyncio.to_thread(
+                    self._scan_symbol, sym, strategy, period, limit
+                )
+
+        results = await asyncio.gather(
+            *[_bounded_scan(sym) for sym in symbols]
+        )
+        results = list(results)
+
+        # Sort: detected signals first, then alphabetical
+        results.sort(key=lambda s: (not s.detected, s.symbol))
+        detected = [r for r in results if r.detected]
+        if detected:
+            logger.info(
+                "Async scan complete",
+                extra={"strategy": strategy, "detected": len(detected), "total": len(results)},
+            )
+        else:
+            logger.debug(
+                "Async scan complete — no signals",
+                extra={"strategy": strategy, "total": len(results)},
+            )
         return results
 
     def _scan_symbol(

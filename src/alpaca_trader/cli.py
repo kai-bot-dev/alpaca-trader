@@ -33,9 +33,11 @@ app = typer.Typer(
 
 
 @app.callback()
-def main_callback() -> None:
+def main_callback(
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose (DEBUG) logging output"),
+) -> None:
     """Initialize logging on CLI startup."""
-    setup_logging()
+    setup_logging(level="DEBUG" if verbose else None)
 
 console = Console()
 
