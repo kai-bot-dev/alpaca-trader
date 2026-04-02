@@ -161,6 +161,7 @@ async def main() -> None:
 
     entries = summary.get("entries_executed", 0)
     exits = summary.get("exits_executed", 0)
+    proposals = summary.get("proposals_queued", 0)
     errors = summary.get("errors", [])
 
     if args.format == "json":
@@ -177,6 +178,44 @@ async def main() -> None:
         lines.append(f"AutoTrader [{trading_mode}]: {', '.join(parts)}")
         for ex in stock_exit_result.get("exits", []):
             lines.append(f"  SOLD: {ex}")
+
+    # Report queued proposals (options mode)
+    if proposals > 0:
+        lines.append(
+            f"PROPOSALS: {proposals} new trade proposal{'s' if proposals != 1 else ''} queued"
+        )
+        # Fetch and display the freshly queued proposals
+        try:
+            from alpaca_trader.engine.trade_proposals import get_pending_proposals
+
+            pending = await get_pending_proposals()
+            # Show up to the most recent `proposals` proposals
+            recent = pending[-proposals:] if len(pending) >= proposals else pending
+            for p in recent:
+                sym = p.get("symbol", "?")
+                direction = p.get("direction", "?")
+                opt_type = "call" if direction == "long" else "put"
+                strike = p.get("strike", "?")
+                expiry = str(p.get("expiry", "?"))
+                # Format expiry as M/D
+                try:
+                    from datetime import date
+
+                    exp_date = date.fromisoformat(expiry)
+                    expiry_fmt = f"{exp_date.month}/{exp_date.day}"
+                except Exception:
+                    expiry_fmt = expiry
+                premium = p.get("premium")
+                premium_str = f"${float(premium):.2f}" if premium else "?"
+                strategy = p.get("strategy", "?")
+                strength = p.get("signal_strength")
+                strength_str = f"{float(strength):.2f}" if strength is not None else "?"
+                lines.append(
+                    f"  {sym} {opt_type} ${strike} {expiry_fmt} @ {premium_str}"
+                    f" ({strategy} signal, strength={strength_str})"
+                )
+        except Exception as _e:
+            lines.append(f"  (could not load proposal details: {_e})")
 
     if errors:
         for err in errors:

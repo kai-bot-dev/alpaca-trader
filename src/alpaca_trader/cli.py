@@ -1648,5 +1648,136 @@ def journal_stats(
     console.print(t)
 
 
+# --- proposals command group ---
+
+proposals_app = typer.Typer(
+    help="Trade proposal queue — review queued option trade proposals"
+)
+app.add_typer(proposals_app, name="proposals")
+
+
+@proposals_app.command("list")
+def proposals_list(
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """List pending trade proposals awaiting review."""
+    from alpaca_trader.engine.trade_proposals import get_pending_proposals
+
+    asyncio.run(db.init_db())
+    proposals = asyncio.run(get_pending_proposals())
+
+    if json_output:
+        _print_json(proposals)
+        return
+
+    if not proposals:
+        console.print("[dim]No pending proposals.[/dim]")
+        return
+
+    table = Table(title=f"Pending Proposals ({len(proposals)})")
+    table.add_column("ID", style="dim", width=20)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Direction")
+    table.add_column("Strike", justify="right")
+    table.add_column("Expiry")
+    table.add_column("Premium", justify="right")
+    table.add_column("Contracts", justify="right")
+    table.add_column("Strategy")
+    table.add_column("Strength", justify="right")
+    table.add_column("Queued At", style="dim")
+
+    for p in proposals:
+        direction = p.get("direction", "—")
+        dir_str = (
+            f"[green]{direction}[/green]"
+            if direction == "long"
+            else f"[red]{direction}[/red]"
+        )
+        strength = p.get("signal_strength")
+        strength_str = f"{float(strength):.2f}" if strength is not None else "—"
+        table.add_row(
+            p.get("id", "—"),
+            p.get("symbol", "—"),
+            dir_str,
+            _fmt_decimal(p.get("strike")),
+            str(p.get("expiry", "—")),
+            _fmt_decimal(p.get("premium")),
+            str(p.get("contracts", "—")),
+            p.get("strategy", "—"),
+            strength_str,
+            str(p.get("queued_at", "—"))[:19],
+        )
+
+    console.print(table)
+
+
+@proposals_app.command("history")
+def proposals_history(
+    limit: int = typer.Option(20, "--limit", help="Number of proposals to show"),
+    json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
+):
+    """Show all recent proposals with their status."""
+    from alpaca_trader.engine.trade_proposals import get_all_proposals
+
+    asyncio.run(db.init_db())
+    proposals = asyncio.run(get_all_proposals(limit=limit))
+
+    if json_output:
+        _print_json(proposals)
+        return
+
+    if not proposals:
+        console.print("[dim]No proposals found.[/dim]")
+        return
+
+    table = Table(title=f"Proposal History ({len(proposals)})")
+    table.add_column("ID", style="dim", width=20)
+    table.add_column("Symbol", style="bold cyan")
+    table.add_column("Direction")
+    table.add_column("Strike", justify="right")
+    table.add_column("Expiry")
+    table.add_column("Premium", justify="right")
+    table.add_column("Strategy")
+    table.add_column("Status")
+    table.add_column("Reason")
+    table.add_column("Queued At", style="dim")
+
+    for p in proposals:
+        direction = p.get("direction", "—")
+        dir_str = (
+            f"[green]{direction}[/green]"
+            if direction == "long"
+            else f"[red]{direction}[/red]"
+        )
+        status_val = p.get("status", "—")
+        if status_val == "pending":
+            status_str = f"[yellow]{status_val}[/yellow]"
+        elif status_val == "approved":
+            status_str = f"[green]{status_val}[/green]"
+        elif status_val in ("rejected", "expired"):
+            status_str = f"[red]{status_val}[/red]"
+        else:
+            status_str = f"[dim]{status_val}[/dim]"
+
+        reason = p.get("reason", "—")
+        if len(reason) > 50:
+            reason = reason[:47] + "..."
+
+        table.add_row(
+            p.get("id", "—"),
+            p.get("symbol", "—"),
+            dir_str,
+            _fmt_decimal(p.get("strike")),
+            str(p.get("expiry", "—")),
+            _fmt_decimal(p.get("premium")),
+            p.get("strategy", "—"),
+            status_str,
+            reason,
+            str(p.get("queued_at", "—"))[:19],
+        )
+
+    console.print(table)
+
+
 if __name__ == "__main__":
     app()

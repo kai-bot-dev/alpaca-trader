@@ -8,6 +8,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from alpaca_trader.core import database as db
+from alpaca_trader.engine.trade_proposals import queue_proposal
 from alpaca_trader.engine.risk_manager import RiskManager, RiskConfig
 from alpaca_trader.engine.order_executor import OrderExecutor, ExecutorConfig
 from alpaca_trader.engine.options_position_manager import OptionsPositionManager
@@ -165,6 +166,7 @@ class OptionsTrader:
             "signals_found": 0,
             "entries_approved": 0,
             "entries_executed": 0,
+            "proposals_queued": 0,
             "errors": [],
             "cycle_time": datetime.now(timezone.utc).isoformat(),
             "mode": "options",
@@ -362,7 +364,6 @@ class OptionsTrader:
 
             try:
                 direction = "long" if signal.direction == "long" else "short"
-                option_type = "call" if direction == "long" else "put"
 
                 # Regime filter: skip entries that don't match market regime
                 if market_regime is not None:
@@ -499,49 +500,48 @@ class OptionsTrader:
 
                 summary["entries_approved"] += 1
 
-                # Fix 4: Use limit orders for options entries (mid price prevents terrible fills on wide spreads)
-                bid_price = contract.get("bid", 0) or 0
-                mid_price = round((bid_price + ask_price) / 2.0, 2)
-                if mid_price <= 0:
-                    mid_price = ask_price  # fallback to ask if no bid
-                order_result = self.order_executor.place_limit_order(
-                    option_symbol, contracts_qty, "buy", limit_price=mid_price
-                )
-                if order_result.success:
-                    summary["entries_executed"] += 1
-                    self._trades_today += 1
-                    open_positions_count += 1
-                    open_option_symbols.add(option_symbol.upper())
-                    open_underlying_symbols.add(underlying.upper())
+                # Queue proposal for review instead of auto-executing
+                try:
+                    _iv_for_proposal = None
+                    try:
+                        _iv_for_proposal = await get_iv_rank(underlying)
+                    except Exception:
+                        pass
 
-                    trade_id = await self.trade_journal.log_entry(
-                        symbol=underlying,
-                        side="buy",
-                        qty=contracts_qty,
-                        price=ask_price,
-                        strategy=signal.strategy,
-                        signal_details=signal.details,
-                        option_symbol=option_symbol,
-                        option_type=option_type,
-                        strike_price=contract["strike"],
-                        expiry_date=contract["expiry"],
-                        premium_paid=ask_price,
-                        contracts=contracts_qty,
-                        delta_at_entry=contract["delta"],
-                        theta_at_entry=contract["theta"],
-                        iv_at_entry=contract.get("iv"),
-                    )
+                    proposal = {
+                        "symbol": underlying,
+                        "option_symbol": contract["symbol"],
+                        "direction": signal.direction,
+                        "strike": contract["strike"],
+                        "expiry": contract["expiry"],
+                        "delta": contract["delta"],
+                        "premium": contract.get("ask") or contract.get("last_price"),
+                        "contracts": contracts_qty,
+                        "strategy": signal.strategy,
+                        "signal_strength": signal.strength,
+                        "signal_details": signal.details,
+                        "regime": market_regime.regime if market_regime else None,
+                        "iv_rank": _iv_for_proposal.iv_rank
+                        if _iv_for_proposal
+                        else None,
+                        "underlying_price": float(
+                            contract.get("underlying_price") or 0
+                        ),
+                        "reason": f"{signal.strategy} signal on {underlying}: {signal.direction}, strength={signal.strength:.2f}",
+                    }
+                    proposal_id = await queue_proposal(proposal)
+                    summary["proposals_queued"] += 1
                     logger.info(
-                        "Options entry: %s %s contracts=%d premium=%.2f trade_id=%d",
+                        "Options proposal queued: %s %s contracts=%d premium=%.2f proposal_id=%s",
                         underlying,
                         option_symbol,
                         contracts_qty,
                         ask_price,
-                        trade_id,
+                        proposal_id,
                     )
-                else:
+                except Exception as _pe:
                     summary["errors"].append(
-                        f"Entry order failed for {option_symbol}: {order_result.error}"
+                        f"Failed to queue proposal for {option_symbol}: {_pe}"
                     )
 
             except Exception as e:
