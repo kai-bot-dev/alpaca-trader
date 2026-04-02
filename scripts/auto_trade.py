@@ -32,7 +32,12 @@ async def check_stock_exits(dry_run: bool) -> dict:
 
         positions = alpaca.get_positions()
         # Stock positions have short symbols (<=5 chars), options are longer
-        stock_positions = [p for p in positions if len(p.get("symbol", "")) <= 5]
+        # Filter out skip_symbols entirely so we don't even evaluate them
+        stock_positions = [
+            p
+            for p in positions
+            if len(p.get("symbol", "")) <= 5 and p.get("symbol", "") not in skip_symbols
+        ]
         if not stock_positions:
             return result
 
