@@ -1,9 +1,12 @@
 """Alpaca API client wrapper for alpaca-trader."""
 
+from __future__ import annotations
+
 import os
 from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Optional
+from typing import TYPE_CHECKING
 
 from alpaca.trading.client import TradingClient
 from alpaca.trading.requests import (
@@ -15,21 +18,22 @@ from alpaca.trading.requests import (
 )
 from alpaca.trading.enums import (
     OrderSide,
-    OrderType,
     TimeInForce,
     QueryOrderStatus,
     ContractType,
-    ExerciseStyle,
     OrderClass,
     PositionIntent,
 )
 from alpaca.data.historical.option import OptionHistoricalDataClient
 from alpaca.data.historical.stock import StockHistoricalDataClient
-from alpaca.data.requests import OptionSnapshotRequest, OptionChainRequest, StockBarsRequest
+from alpaca.data.requests import OptionSnapshotRequest, StockBarsRequest
 from alpaca.data.timeframe import TimeFrame, TimeFrameUnit
 from dotenv import load_dotenv
 
 load_dotenv()
+
+if TYPE_CHECKING:
+    import pandas as pd
 
 _ALPACA_API_KEY = os.getenv("ALPACA_API_KEY")
 _ALPACA_SECRET_KEY = os.getenv("ALPACA_SECRET_KEY")
@@ -66,6 +70,7 @@ def _get_data_client() -> OptionHistoricalDataClient:
 def _serialize(obj) -> dict:
     """Convert an Alpaca SDK object to a plain dict."""
     from enum import Enum
+
     if isinstance(obj, Enum):
         return obj.value
     if hasattr(obj, "__dict__"):
@@ -91,6 +96,7 @@ def _serialize(obj) -> dict:
 
 # --- Account ---
 
+
 def get_account() -> dict:
     """Get account information."""
     client = _get_trading_client()
@@ -99,6 +105,7 @@ def get_account() -> dict:
 
 
 # --- Positions ---
+
 
 def get_positions() -> list[dict]:
     """Get all open positions."""
@@ -122,6 +129,7 @@ def close_position(symbol_or_id: str) -> dict:
 
 
 # --- Orders ---
+
 
 def get_orders(
     status: Optional[str] = None,
@@ -215,6 +223,7 @@ def cancel_all_orders() -> list[str]:
 
 # --- Options Chain ---
 
+
 def get_options_contracts(
     underlying_symbol: str,
     expiration_date: Optional[date] = None,
@@ -246,7 +255,9 @@ def get_options_contracts(
         limit=limit,
     )
     response = client.get_option_contracts(request)
-    contracts = response.option_contracts if hasattr(response, "option_contracts") else []
+    contracts = (
+        response.option_contracts if hasattr(response, "option_contracts") else []
+    )
     return [_serialize(c) for c in contracts]
 
 
@@ -326,8 +337,12 @@ def get_option_chain(
         latest_quote = snap.get("latest_quote", {})
         if latest_quote:
             # Field names may be "bid_price"/"ask_price" (enriched) or "bp"/"ap" (raw)
-            merged["bid_price"] = latest_quote.get("bid_price") or latest_quote.get("bp")
-            merged["ask_price"] = latest_quote.get("ask_price") or latest_quote.get("ap")
+            merged["bid_price"] = latest_quote.get("bid_price") or latest_quote.get(
+                "bp"
+            )
+            merged["ask_price"] = latest_quote.get("ask_price") or latest_quote.get(
+                "ap"
+            )
             merged["bid_size"] = latest_quote.get("bid_size") or latest_quote.get("bs")
             merged["ask_size"] = latest_quote.get("ask_size") or latest_quote.get("as")
 
@@ -344,7 +359,10 @@ def get_option_chain(
 
 # --- Multi-Leg Orders ---
 
-def _build_leg(symbol: str, ratio_qty: float, side: str, position_intent: str) -> OptionLegRequest:
+
+def _build_leg(
+    symbol: str, ratio_qty: float, side: str, position_intent: str
+) -> OptionLegRequest:
     """Build an OptionLegRequest from plain params."""
     order_side = OrderSide.BUY if side.lower() == "buy" else OrderSide.SELL
     intent_map = {
@@ -354,10 +372,14 @@ def _build_leg(symbol: str, ratio_qty: float, side: str, position_intent: str) -
         "sell_to_close": PositionIntent.SELL_TO_CLOSE,
     }
     intent = intent_map.get(position_intent.lower(), PositionIntent.BUY_TO_OPEN)
-    return OptionLegRequest(symbol=symbol, ratio_qty=ratio_qty, side=order_side, position_intent=intent)
+    return OptionLegRequest(
+        symbol=symbol, ratio_qty=ratio_qty, side=order_side, position_intent=intent
+    )
 
 
-def _submit_mleg(legs: list[OptionLegRequest], qty: int, time_in_force: str = "day") -> dict:
+def _submit_mleg(
+    legs: list[OptionLegRequest], qty: int, time_in_force: str = "day"
+) -> dict:
     """Submit a multi-leg market order."""
     client = _get_trading_client()
     tif = _parse_tif(time_in_force)
@@ -382,8 +404,18 @@ def place_spread_order(
     Each leg dict: {symbol, ratio_qty, side, position_intent}
     """
     legs = [
-        _build_leg(leg1["symbol"], leg1.get("ratio_qty", 1.0), leg1["side"], leg1["position_intent"]),
-        _build_leg(leg2["symbol"], leg2.get("ratio_qty", 1.0), leg2["side"], leg2["position_intent"]),
+        _build_leg(
+            leg1["symbol"],
+            leg1.get("ratio_qty", 1.0),
+            leg1["side"],
+            leg1["position_intent"],
+        ),
+        _build_leg(
+            leg2["symbol"],
+            leg2.get("ratio_qty", 1.0),
+            leg2["side"],
+            leg2["position_intent"],
+        ),
     ]
     return _submit_mleg(legs, qty, time_in_force)
 
@@ -399,7 +431,15 @@ def place_iron_condor(
     """
     if len(legs) != 4:
         raise ValueError("Iron condor requires exactly 4 legs")
-    built = [_build_leg(l["symbol"], l.get("ratio_qty", 1.0), l["side"], l["position_intent"]) for l in legs]
+    built = [
+        _build_leg(
+            leg["symbol"],
+            leg.get("ratio_qty", 1.0),
+            leg["side"],
+            leg["position_intent"],
+        )
+        for leg in legs
+    ]
     return _submit_mleg(built, qty, time_in_force)
 
 
@@ -440,6 +480,7 @@ def place_strangle(
 
 # --- P&L Calculations ---
 
+
 def calculate_position_pnl(position: dict) -> dict:
     """Calculate unrealized/realized/total P&L for a position dict.
 
@@ -452,10 +493,17 @@ def calculate_position_pnl(position: dict) -> dict:
     market_value = float(position.get("market_value", 0) or current_price * qty)
     cost_basis = float(position.get("cost_basis", 0) or avg_entry * qty)
 
-    unrealized_pnl = float(position.get("unrealized_pl", 0) or (market_value - cost_basis))
-    realized_pnl = 0.0  # Alpaca positions only show unrealized; realized tracked via snapshots
+    unrealized_pnl = float(
+        position.get("unrealized_pl", 0) or (market_value - cost_basis)
+    )
+    realized_pnl = (
+        0.0  # Alpaca positions only show unrealized; realized tracked via snapshots
+    )
     total_pnl = unrealized_pnl + realized_pnl
-    pct_change = float(position.get("unrealized_plpc", 0) or (unrealized_pnl / cost_basis if cost_basis else 0))
+    pct_change = float(
+        position.get("unrealized_plpc", 0)
+        or (unrealized_pnl / cost_basis if cost_basis else 0)
+    )
 
     return {
         "symbol": position.get("symbol", ""),
@@ -497,6 +545,7 @@ async def take_position_snapshot() -> list[dict]:
 
 # --- Historical Stock Data ---
 
+
 def _get_stock_data_client() -> StockHistoricalDataClient:
     """Create and return an Alpaca StockHistoricalDataClient."""
     if not _ALPACA_API_KEY or not _ALPACA_SECRET_KEY:
@@ -536,6 +585,7 @@ def get_stock_bars(
     # If no start date given, default to enough history for Bollinger Bands (20-period)
     if start is None and end is None:
         from datetime import timedelta
+
         # For daily bars, go back ~6 months; for intraday, 30 days
         if timeframe == TimeFrame.Day:
             start = datetime.now(timezone.utc) - timedelta(days=180)
@@ -561,14 +611,16 @@ def get_stock_bars(
             bar_data = []
     for bar in bar_data:
         b = _serialize(bar)
-        result.append({
-            "timestamp": b.get("timestamp"),
-            "open": float(b.get("open", 0)),
-            "high": float(b.get("high", 0)),
-            "low": float(b.get("low", 0)),
-            "close": float(b.get("close", 0)),
-            "volume": float(b.get("volume", 0)),
-        })
+        result.append(
+            {
+                "timestamp": b.get("timestamp"),
+                "open": float(b.get("open", 0)),
+                "high": float(b.get("high", 0)),
+                "low": float(b.get("low", 0)),
+                "close": float(b.get("close", 0)),
+                "volume": float(b.get("volume", 0)),
+            }
+        )
     return result
 
 
@@ -581,9 +633,12 @@ def get_stock_bars_df(
 ) -> "pd.DataFrame":
     """Fetch historical bars and return as a pandas DataFrame with OHLCV columns."""
     import pandas as pd
+
     bars = get_stock_bars(symbol, period=period, limit=limit, start=start, end=end)
     if not bars:
-        return pd.DataFrame(columns=["timestamp", "open", "high", "low", "close", "volume"])
+        return pd.DataFrame(
+            columns=["timestamp", "open", "high", "low", "close", "volume"]
+        )
     df = pd.DataFrame(bars)
     df["timestamp"] = pd.to_datetime(df["timestamp"])
     df = df.set_index("timestamp").sort_index()
@@ -591,6 +646,7 @@ def get_stock_bars_df(
 
 
 # --- Helper ---
+
 
 def _parse_tif(tif: str) -> TimeInForce:
     mapping = {
