@@ -29,12 +29,18 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - ✅ Refactor scanner.py to use async properly (currently blocking in sync scan loop) (2026-04-01)
 
 ### Low Priority
-- [ ] Add mypy strict checking and fix type errors
-- [ ] Add pre-commit hooks (ruff, mypy)
+- ✅ Add pre-commit hooks (ruff, mypy) (2026-04-02)
+  - Created .pre-commit-config.yaml with ruff lint/format, trailing whitespace, YAML checks
+  - Added pre-commit, ruff, mypy, pandas-stubs, types-requests to dev dependencies
+  - Installed pre-commit hooks (.git/hooks/pre-commit and pre-push)
+  - All 314 tests pass with new linting rules
+  - Fixed ruff errors: removed unused variables, fixed ambiguous variable name (l -> leg)
+  - Added TYPE_CHECKING import for pandas to fix undefined name warning
+- [ ] Add mypy strict checking and fix type errors (281 errors currently, requires multi-session effort)
 - [ ] Improve CLI output formatting consistency
-- ✅ Add --verbose flag to all CLI commands (2026-04-01)
 - [ ] Dashboard: add loading spinners for API calls
 - [ ] Dashboard: add error toast notifications
+
 
 ### Ideas (For Later)
 - [ ] Add more strategies (RSI divergence, VWAP, volume profile)
