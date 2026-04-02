@@ -190,6 +190,16 @@ class StrikeSelector:
                     delta = _estimate_delta(option_type, stock_price or strike, strike)
                     theta = 0.0
 
+            # Fix 3: Delta sanity check — deep OTM contracts should be skipped
+            ref_price_for_check = stock_price or strike
+            if ref_price_for_check > 0:
+                if option_type == "call" and strike > ref_price_for_check * 1.15:
+                    # Deep OTM call — force near-zero delta so it gets filtered
+                    delta = 0.05
+                elif option_type == "put" and strike < ref_price_for_check * 0.85:
+                    # Deep OTM put — force near-zero delta so it gets filtered
+                    delta = -0.05
+
             abs_delta = abs(delta)
             if not (_MIN_DELTA <= abs_delta <= _MAX_DELTA):
                 continue
@@ -231,6 +241,15 @@ class StrikeSelector:
 
             mid = (bid + ask) / 2.0
             if mid <= 0:
+                continue
+
+            # Fix 2: Minimum premium floor — skip penny options (wide spreads, no liquidity)
+            if ask < 1.0:
+                logger.debug(
+                    "StrikeSelector: skipping %s — ask %.2f below $1.00 minimum",
+                    sym,
+                    ask,
+                )
                 continue
             spread = ask - bid
             spread_pct = spread / mid

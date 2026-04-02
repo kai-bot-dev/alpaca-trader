@@ -444,23 +444,12 @@ class OptionsTrader:
                         "OptionsTrader: IV rank check failed for %s: %s", underlying, _e
                     )
 
-                from alpaca_trader.core import client as alpaca
-
-                expiry_gte, expiry_lte = _get_chain_expiry_range()
-                chain = alpaca.get_option_chain(
-                    underlying_symbol=underlying,
-                    expiration_date_gte=expiry_gte,
-                    expiration_date_lte=expiry_lte,
-                    option_type=option_type,
-                    limit=100,
+                # Fix 1: Use self-contained select_contract (pass portfolio_value, not raw chain)
+                # This uses direction-aware strike range filtering inside StrikeSelector._fetch_chain
+                # so puts get strikes near current price (90%-105%), not 75% OTM junk
+                contract = selector.select_contract(
+                    underlying, direction, portfolio_value
                 )
-                if not chain:
-                    logger.info(
-                        "OptionsTrader: empty chain for %s %s", underlying, option_type
-                    )
-                    continue
-
-                contract = selector.select_contract(underlying, direction, chain)
                 if contract is None:
                     logger.info(
                         "OptionsTrader: no suitable contract for %s %s",
@@ -510,8 +499,13 @@ class OptionsTrader:
 
                 summary["entries_approved"] += 1
 
-                order_result = self.order_executor.place_market_order(
-                    option_symbol, contracts_qty, "buy"
+                # Fix 4: Use limit orders for options entries (mid price prevents terrible fills on wide spreads)
+                bid_price = contract.get("bid", 0) or 0
+                mid_price = round((bid_price + ask_price) / 2.0, 2)
+                if mid_price <= 0:
+                    mid_price = ask_price  # fallback to ask if no bid
+                order_result = self.order_executor.place_limit_order(
+                    option_symbol, contracts_qty, "buy", limit_price=mid_price
                 )
                 if order_result.success:
                     summary["entries_executed"] += 1

@@ -191,8 +191,8 @@ class TestScoring:
 
 class TestContractsToBuy:
     def test_contracts_capped_at_ten(self):
-        # Very cheap option: ask=0.01 → floor(2200/1) = 2200, capped at 10
-        chain = [make_contract(bid=0.009, ask=0.01, theta=-0.0004)]
+        # Cheap but valid option (above $1 floor): ask=1.10 → floor(2200/110) = 20, capped at 10
+        chain = [make_contract(bid=1.00, ask=1.10, theta=-0.0004)]
         sel = StrikeSelector(portfolio_value=110_000)
         result = sel.select_contract("X", "long", chain)
         assert result is not None
