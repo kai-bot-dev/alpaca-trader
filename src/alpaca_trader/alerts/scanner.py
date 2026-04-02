@@ -47,14 +47,16 @@ class ScheduledScanner:
                     signals = await scanner.scan_async(symbols, strategy=strategy)
                     for sig in signals:
                         if sig.detected:
-                            strategy_signals.append({
-                                "symbol": sig.symbol,
-                                "strategy": sig.strategy,
-                                "direction": sig.direction,
-                                "strength": sig.strength,
-                                "details": sig.details,
-                                "timestamp": sig.timestamp,
-                            })
+                            strategy_signals.append(
+                                {
+                                    "symbol": sig.symbol,
+                                    "strategy": sig.strategy,
+                                    "direction": sig.direction,
+                                    "strength": sig.strength,
+                                    "details": sig.details,
+                                    "timestamp": sig.timestamp,
+                                }
+                            )
             except EnvironmentError:
                 raise
             except Exception as e:
@@ -66,11 +68,14 @@ class ScheduledScanner:
         await db.setting_set("monitor_last_run", completed_at)
         await db.setting_set("monitor_last_triggered_count", str(len(triggered_alerts)))
 
-        logger.info("Scheduled scan complete", extra={
-            "symbols_scanned": len(symbols),
-            "alerts_triggered": len(triggered_alerts),
-            "signals_detected": len(strategy_signals),
-        })
+        logger.info(
+            "Scheduled scan complete",
+            extra={
+                "symbols_scanned": len(symbols),
+                "alerts_triggered": len(triggered_alerts),
+                "signals_detected": len(strategy_signals),
+            },
+        )
 
         return {
             "started_at": started_at,

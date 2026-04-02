@@ -10,7 +10,9 @@ from alpaca_trader.strategies.bounce import BounceDetector, BounceSignal
 from alpaca_trader.strategies.trend import TrendDetector, TrendSignal
 
 
-def make_ohlcv(n=60, start_price=100.0, volatility=0.02, trend=0.0, seed=42, base_volume=1e6):
+def make_ohlcv(
+    n=60, start_price=100.0, volatility=0.02, trend=0.0, seed=42, base_volume=1e6
+):
     rng = np.random.default_rng(seed)
     returns = rng.normal(loc=trend, scale=volatility, size=n)
     close = start_price * np.cumprod(1 + returns)
@@ -19,7 +21,9 @@ def make_ohlcv(n=60, start_price=100.0, volatility=0.02, trend=0.0, seed=42, bas
     high = np.maximum(open_, close) * (1 + rng.uniform(0, 0.005, n))
     low = np.minimum(open_, close) * (1 - rng.uniform(0, 0.005, n))
     volume = (base_volume * (1 + rng.normal(0, 0.3, n))).clip(100)
-    return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume})
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume}
+    )
 
 
 def make_tight_squeeze_data(n=40, seed=99):
@@ -35,7 +39,9 @@ def make_tight_squeeze_data(n=40, seed=99):
     vol_flat = rng.uniform(8e5, 1.2e6, flat_n)
     vol_break = rng.uniform(3e6, 5e6, 5)
     volume = np.concatenate([vol_flat, vol_break])
-    return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume})
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume}
+    )
 
 
 def make_trending_up(n=60, seed=7):
@@ -55,7 +61,9 @@ def make_range_bound(n=60, seed=10):
     high = np.maximum(open_, close) + rng.uniform(0.1, 0.5, n)
     low = np.minimum(open_, close) - rng.uniform(0.1, 0.5, n)
     volume = rng.uniform(5e5, 1.5e6, n)
-    return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume})
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume}
+    )
 
 
 class TestBollingerBands(unittest.TestCase):
@@ -105,8 +113,8 @@ class TestBollingerBands(unittest.TestCase):
         self.assertEqual(r["bb_middle"].isna().sum(), 9)
 
     def test_constant_price_zero_width(self):
-        df = pd.DataFrame({k: [100.0]*25 for k in ["open","high","low","close"]})
-        df["volume"] = [1e6]*25
+        df = pd.DataFrame({k: [100.0] * 25 for k in ["open", "high", "low", "close"]})
+        df["volume"] = [1e6] * 25
         r = self.bb.calc(df)
         self.assertAlmostEqual(r.iloc[-1]["bb_width"], 0.0, places=5)
 
@@ -160,7 +168,9 @@ class TestSqueezeDetector(unittest.TestCase):
 
 class TestBounceDetector(unittest.TestCase):
     def setUp(self):
-        self.det = BounceDetector(bb_period=20, bb_std_dev=2.0, rsi_period=14, adx_period=14)
+        self.det = BounceDetector(
+            bb_period=20, bb_std_dev=2.0, rsi_period=14, adx_period=14
+        )
 
     def test_no_signal_trending(self):
         s = self.det.detect(make_trending_up())
@@ -178,12 +188,20 @@ class TestBounceDetector(unittest.TestCase):
         n = 60
         close = np.full(n, 100.0)
         for i in range(1, 50):
-            close[i] = close[i-1] + rng.normal(0, 0.3)
+            close[i] = close[i - 1] + rng.normal(0, 0.3)
         for i in range(50, n):
-            close[i] = close[i-1] - 0.8
+            close[i] = close[i - 1] - 0.8
         o = np.roll(close, 1)
         o[0] = 100.0
-        df = pd.DataFrame({"open": o, "high": np.maximum(o, close)+0.2, "low": np.minimum(o, close)-0.2, "close": close, "volume": np.full(n, 1e6)})
+        df = pd.DataFrame(
+            {
+                "open": o,
+                "high": np.maximum(o, close) + 0.2,
+                "low": np.minimum(o, close) - 0.2,
+                "close": close,
+                "volume": np.full(n, 1e6),
+            }
+        )
         self.assertIsInstance(self.det.detect(df), BounceSignal)
 
     def test_insufficient_data(self):
@@ -203,18 +221,33 @@ class TestBounceDetector(unittest.TestCase):
         n = 60
         close = np.full(n, 100.0)
         for i in range(1, 50):
-            close[i] = close[i-1] + rng.normal(0, 0.3)
+            close[i] = close[i - 1] + rng.normal(0, 0.3)
         for i in range(50, n):
-            close[i] = close[i-1] + 0.8
+            close[i] = close[i - 1] + 0.8
         o = np.roll(close, 1)
         o[0] = 100.0
-        df = pd.DataFrame({"open": o, "high": np.maximum(o, close)+0.2, "low": np.minimum(o, close)-0.2, "close": close, "volume": np.full(n, 1e6)})
+        df = pd.DataFrame(
+            {
+                "open": o,
+                "high": np.maximum(o, close) + 0.2,
+                "low": np.minimum(o, close) - 0.2,
+                "close": close,
+                "volume": np.full(n, 1e6),
+            }
+        )
         self.assertIsInstance(self.det.detect(df), BounceSignal)
 
 
 class TestTrendDetector(unittest.TestCase):
     def setUp(self):
-        self.det = TrendDetector(bb_period=20, bb_std_dev=2.0, lookback=5, macd_fast=12, macd_slow=26, macd_signal=9)
+        self.det = TrendDetector(
+            bb_period=20,
+            bb_std_dev=2.0,
+            lookback=5,
+            macd_fast=12,
+            macd_slow=26,
+            macd_signal=9,
+        )
 
     def test_trend_long_uptrend(self):
         s = self.det.detect(make_trending_up())

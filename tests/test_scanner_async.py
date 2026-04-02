@@ -4,12 +4,12 @@ import asyncio
 import threading
 import time
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 
-from alpaca_trader.strategies.scanner import WatchlistScanner, Signal
+from alpaca_trader.strategies.scanner import WatchlistScanner
 
 
 def make_ohlcv(n=60, start_price=100.0, volatility=0.02, seed=42):
@@ -55,6 +55,7 @@ class TestScanAsync(unittest.TestCase):
     @patch("alpaca_trader.strategies.scanner.alpaca")
     def test_scan_async_handles_errors(self, mock_alpaca):
         """scan_async should handle per-symbol errors gracefully."""
+
         def side_effect(symbol, period="1D", limit=60):
             if symbol == "BAD":
                 raise RuntimeError("API error")
@@ -93,7 +94,9 @@ class TestScanAsync(unittest.TestCase):
         call_times = []
 
         def slow_bars(symbol, period="1D", limit=60):
-            call_times.append((symbol, threading.current_thread().name, time.monotonic()))
+            call_times.append(
+                (symbol, threading.current_thread().name, time.monotonic())
+            )
             time.sleep(0.05)  # 50ms per call
             return make_ohlcv(60, seed=hash(symbol) % 1000)
 
@@ -110,7 +113,9 @@ class TestScanAsync(unittest.TestCase):
         self.assertEqual(len(results), 5)
         # Sequential would take ~250ms (5 * 50ms). Concurrent should be ~50-100ms.
         # Use generous threshold to avoid flaky tests.
-        self.assertLess(elapsed, 0.25, f"scan_async took {elapsed:.3f}s — likely not concurrent")
+        self.assertLess(
+            elapsed, 0.25, f"scan_async took {elapsed:.3f}s — likely not concurrent"
+        )
 
     @patch("alpaca_trader.strategies.scanner.alpaca")
     def test_scan_async_respects_semaphore(self, mock_alpaca):
@@ -137,12 +142,16 @@ class TestScanAsync(unittest.TestCase):
 
         self.assertEqual(len(results), 10)
         # Max concurrent should not exceed our semaphore limit
-        self.assertLessEqual(active["max_seen"], 3,
-            f"Max concurrent was {active['max_seen']}, expected <= 3")
+        self.assertLessEqual(
+            active["max_seen"],
+            3,
+            f"Max concurrent was {active['max_seen']}, expected <= 3",
+        )
 
     @patch("alpaca_trader.strategies.scanner.alpaca")
     def test_scan_async_sorted_detected_first(self, mock_alpaca):
         """Results should be sorted: detected first, then alphabetical."""
+
         def bars_for(symbol, period="1D", limit=60):
             # Use different seeds to get different detection outcomes
             if symbol == "AAPL":

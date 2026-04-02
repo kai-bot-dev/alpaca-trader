@@ -1,8 +1,7 @@
 """Bollinger Band + RSI Reversal strategy detection."""
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from alpaca_trader.strategies.bollinger import BollingerBands
@@ -114,9 +113,16 @@ class BBRSIReversalDetector:
         """
         min_rows = max(self.bb.period, self.rsi_period, self.volume_sma_period) + 1
         no_signal = BBRSIReversalSignal(
-            detected=False, direction="none", strength=0.0,
-            rsi=50.0, bb_pct=0.5, confirmations=[],
-            entry_price=0.0, target_price=0.0, stop_price=0.0, risk_reward=0.0,
+            detected=False,
+            direction="none",
+            strength=0.0,
+            rsi=50.0,
+            bb_pct=0.5,
+            confirmations=[],
+            entry_price=0.0,
+            target_price=0.0,
+            stop_price=0.0,
+            risk_reward=0.0,
         )
 
         if len(df) < min_rows:
@@ -140,9 +146,16 @@ class BBRSIReversalDetector:
             direction = "short"
         else:
             return BBRSIReversalSignal(
-                detected=False, direction="none", strength=0.0,
-                rsi=rsi, bb_pct=bb_pct, confirmations=[],
-                entry_price=close, target_price=middle, stop_price=0.0, risk_reward=0.0,
+                detected=False,
+                direction="none",
+                strength=0.0,
+                rsi=rsi,
+                bb_pct=bb_pct,
+                confirmations=[],
+                entry_price=close,
+                target_price=middle,
+                stop_price=0.0,
+                risk_reward=0.0,
             )
 
         # Gather confirmations
@@ -164,12 +177,21 @@ class BBRSIReversalDetector:
             confirmations.append("rsi_divergence")
 
         # If RSI is extremely oversold/overbought, bypass the confirmation requirement
-        extreme_rsi = (direction == "long" and rsi < 25) or (direction == "short" and rsi > 75)
+        extreme_rsi = (direction == "long" and rsi < 25) or (
+            direction == "short" and rsi > 75
+        )
         if not confirmations and not extreme_rsi:
             return BBRSIReversalSignal(
-                detected=False, direction="none", strength=0.0,
-                rsi=rsi, bb_pct=bb_pct, confirmations=[],
-                entry_price=close, target_price=middle, stop_price=0.0, risk_reward=0.0,
+                detected=False,
+                direction="none",
+                strength=0.0,
+                rsi=rsi,
+                bb_pct=bb_pct,
+                confirmations=[],
+                entry_price=close,
+                target_price=middle,
+                stop_price=0.0,
+                risk_reward=0.0,
             )
 
         # Strength: confirmations / 3, minimum 0.25 when bypassing confirmation check
@@ -192,7 +214,9 @@ class BBRSIReversalDetector:
             risk_reward=risk_reward,
         )
 
-    def _check_volume_spike(self, df: pd.DataFrame, threshold: float | None = None) -> bool:
+    def _check_volume_spike(
+        self, df: pd.DataFrame, threshold: float | None = None
+    ) -> bool:
         """Return True if the latest bar has a volume spike vs 20-bar SMA.
 
         Args:
@@ -262,8 +286,8 @@ class BBRSIReversalDetector:
             return False
 
         close = df["close"]
-        prev_closes = close.iloc[-(n + 1):-1]
-        prev_rsi = rsi_series.iloc[-(n + 1):-1]
+        prev_closes = close.iloc[-(n + 1) : -1]
+        prev_rsi = rsi_series.iloc[-(n + 1) : -1]
 
         current_close = float(close.iloc[-1])
         current_rsi = float(rsi_series.iloc[-1])

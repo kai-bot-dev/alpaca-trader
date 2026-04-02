@@ -3,7 +3,6 @@
 import math
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional
 
 import numpy as np
 import pandas as pd
@@ -20,7 +19,7 @@ from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector
 class Trade:
     entry_date: str
     exit_date: str
-    direction: str      # 'long' or 'short'
+    direction: str  # 'long' or 'short'
     entry_price: float
     exit_price: float
     pnl: float
@@ -35,10 +34,10 @@ class BacktestResult:
     end_date: str
     initial_capital: float
     final_capital: float
-    total_return: float     # Percentage
-    win_rate: float         # 0.0–1.0
+    total_return: float  # Percentage
+    win_rate: float  # 0.0–1.0
     sharpe: float
-    max_drawdown: float     # Percentage (negative)
+    max_drawdown: float  # Percentage (negative)
     trades: list[Trade] = field(default_factory=list)
     num_trades: int = 0
 
@@ -78,17 +77,23 @@ class Backtester:
         start_dt = datetime.fromisoformat(start_date)
         end_dt = datetime.fromisoformat(end_date)
 
-        df = alpaca.get_stock_bars_df(symbol, period=period, limit=500,
-                                      start=start_dt, end=end_dt)
+        df = alpaca.get_stock_bars_df(
+            symbol, period=period, limit=500, start=start_dt, end=end_dt
+        )
 
         empty_result = BacktestResult(
-            symbol=symbol, strategy=strategy,
-            start_date=start_date, end_date=end_date,
+            symbol=symbol,
+            strategy=strategy,
+            start_date=start_date,
+            end_date=end_date,
             initial_capital=initial_capital,
             final_capital=initial_capital,
-            total_return=0.0, win_rate=0.0,
-            sharpe=0.0, max_drawdown=0.0,
-            trades=[], num_trades=0,
+            total_return=0.0,
+            win_rate=0.0,
+            sharpe=0.0,
+            max_drawdown=0.0,
+            trades=[],
+            num_trades=0,
         )
 
         if df.empty or len(df) < 25:
@@ -104,7 +109,7 @@ class Backtester:
         # Simpler capital tracking: each trade invests full capital, compounds
         capital = initial_capital
         for t in trades:
-            capital *= (1 + t.pnl_pct / 100)
+            capital *= 1 + t.pnl_pct / 100
 
         wins = [t for t in trades if t.pnl > 0]
         win_rate = len(wins) / len(trades) if trades else 0.0
@@ -122,14 +127,16 @@ class Backtester:
         peak = initial_capital
         max_dd = 0.0
         for t in trades:
-            equity *= (1 + t.pnl_pct / 100)
+            equity *= 1 + t.pnl_pct / 100
             peak = max(peak, equity)
             dd = (equity - peak) / peak * 100
             max_dd = min(max_dd, dd)
 
         return BacktestResult(
-            symbol=symbol, strategy=strategy,
-            start_date=start_date, end_date=end_date,
+            symbol=symbol,
+            strategy=strategy,
+            start_date=start_date,
+            end_date=end_date,
             initial_capital=initial_capital,
             final_capital=round(capital, 2),
             total_return=round(total_return, 2),
@@ -140,21 +147,20 @@ class Backtester:
             num_trades=len(trades),
         )
 
-    def _simulate(self, df: pd.DataFrame, strategy: str,
-                  initial_capital: float) -> list[Trade]:
+    def _simulate(
+        self, df: pd.DataFrame, strategy: str, initial_capital: float
+    ) -> list[Trade]:
         """Walk through bars, generating entry/exit signals."""
         trades = []
         in_trade = False
         entry_idx = None
         entry_price = None
         direction = "none"
-        entry_middle = None   # middle band at entry (used by bb_rsi_reversal exit)
+        entry_middle = None  # middle band at entry (used by bb_rsi_reversal exit)
         min_rows = 25
 
-        bb = BollingerBands()
-
         for i in range(min_rows, len(df)):
-            window = df.iloc[:i + 1]
+            window = df.iloc[: i + 1]
             latest = df.iloc[i]
             close = float(latest["close"])
             ts = str(latest.name)
@@ -180,26 +186,37 @@ class Backtester:
                 # Check for exit
                 bars_in_trade = i - entry_idx
                 should_exit = self._check_exit(
-                    window, strategy, direction,
-                    entry_price=entry_price, entry_middle=entry_middle,
+                    window,
+                    strategy,
+                    direction,
+                    entry_price=entry_price,
+                    entry_middle=entry_middle,
                     bars_in_trade=bars_in_trade,
                 )
                 if should_exit or i == len(df) - 1:
                     exit_price = close
-                    pnl_pct = ((exit_price - entry_price) / entry_price * 100
-                               if direction == "long"
-                               else (entry_price - exit_price) / entry_price * 100)
-                    pnl = (exit_price - entry_price) if direction == "long" else (entry_price - exit_price)
+                    pnl_pct = (
+                        (exit_price - entry_price) / entry_price * 100
+                        if direction == "long"
+                        else (entry_price - exit_price) / entry_price * 100
+                    )
+                    pnl = (
+                        (exit_price - entry_price)
+                        if direction == "long"
+                        else (entry_price - exit_price)
+                    )
 
-                    trades.append(Trade(
-                        entry_date=str(df.index[entry_idx]),
-                        exit_date=ts,
-                        direction=direction,
-                        entry_price=round(entry_price, 4),
-                        exit_price=round(exit_price, 4),
-                        pnl=round(pnl, 4),
-                        pnl_pct=round(pnl_pct, 4),
-                    ))
+                    trades.append(
+                        Trade(
+                            entry_date=str(df.index[entry_idx]),
+                            exit_date=ts,
+                            direction=direction,
+                            entry_price=round(entry_price, 4),
+                            exit_price=round(exit_price, 4),
+                            pnl=round(pnl, 4),
+                            pnl_pct=round(pnl_pct, 4),
+                        )
+                    )
                     in_trade = False
                     entry_idx = None
                     entry_price = None

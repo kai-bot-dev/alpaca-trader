@@ -7,7 +7,6 @@ from pydantic import BaseModel
 
 from alpaca_trader.core import database as db
 from alpaca_trader.alerts.checker import AlertChecker
-from alpaca_trader.alerts.scanner import ScheduledScanner
 
 router = APIRouter()
 
@@ -21,7 +20,9 @@ class CreateAlertRequest(BaseModel):
 
 @router.get("")
 async def list_alerts(
-    status: Optional[str] = Query(None, description="Filter: active, triggered, dismissed"),
+    status: Optional[str] = Query(
+        None, description="Filter: active, triggered, dismissed"
+    ),
     alert_type: Optional[str] = Query(None, description="Filter by type"),
     symbol: Optional[str] = Query(None, description="Filter by symbol"),
 ):
@@ -34,7 +35,10 @@ async def create_alert(request: CreateAlertRequest):
     """Create a new alert."""
     valid_types = ("fill", "pnl", "expiry", "price", "squeeze", "signal")
     if request.alert_type not in valid_types:
-        raise HTTPException(status_code=400, detail=f"Invalid alert_type. Choose from: {', '.join(valid_types)}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid alert_type. Choose from: {', '.join(valid_types)}",
+        )
     alert_id = await db.alerts_add(
         alert_type=request.alert_type,
         symbol=request.symbol,

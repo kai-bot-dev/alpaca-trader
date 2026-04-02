@@ -81,8 +81,13 @@ class MomentumDetector:
             MomentumSignal with detection details.
         """
         no_signal = MomentumSignal(
-            detected=False, direction="none", strength=0.0,
-            rsi=50.0, ema_fast=0.0, ema_slow=0.0, sma=0.0,
+            detected=False,
+            direction="none",
+            strength=0.0,
+            rsi=50.0,
+            ema_fast=0.0,
+            ema_slow=0.0,
+            sma=0.0,
         )
 
         if len(df) < self.min_rows:
@@ -106,7 +111,7 @@ class MomentumDetector:
 
         # Look back up to 3 bars for RSI crossover (excluding current bar)
         lookback = min(3, len(rsi_series) - 1)
-        recent_rsi = rsi_series.iloc[-(lookback + 1):-1]
+        recent_rsi = rsi_series.iloc[-(lookback + 1) : -1]
 
         # RSI was below 50 recently -> bullish crossover
         rsi_was_below_50 = any(v < 50.0 for v in recent_rsi if not pd.isna(v))

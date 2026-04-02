@@ -1,6 +1,5 @@
 """Bollinger Band calculations using pure pandas/numpy."""
 
-import numpy as np
 import pandas as pd
 
 

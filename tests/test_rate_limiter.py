@@ -1,8 +1,7 @@
 """Unit tests for rate_limiter module."""
 
 import pytest
-import time
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 from requests.exceptions import RequestException, ConnectionError
 
 from alpaca_trader.core.rate_limiter import (
@@ -39,7 +38,7 @@ class TestRetryConfig:
     def test_exponential_backoff(self):
         """Test exponential backoff calculation."""
         config = RetryConfig(initial_backoff_ms=100, backoff_multiplier=2.0)
-        
+
         assert config.get_backoff_ms(0) == 100
         assert config.get_backoff_ms(1) == 200
         assert config.get_backoff_ms(2) == 400
@@ -52,7 +51,7 @@ class TestRetryConfig:
             max_backoff_ms=500,
             backoff_multiplier=2.0,
         )
-        
+
         assert config.get_backoff_ms(0) == 100
         assert config.get_backoff_ms(1) == 200
         assert config.get_backoff_ms(2) == 400
@@ -101,6 +100,7 @@ class TestWithRateLimitRetry:
 
     def test_rate_limit_429_exceeds_max_retries(self):
         """Test that RateLimitError is raised after max retries."""
+
         @with_rate_limit_retry(RetryConfig(max_retries=2))
         def always_rate_limited():
             response = Mock()
@@ -199,6 +199,7 @@ class TestWithRateLimitRetry:
 
     def test_preserves_function_metadata(self):
         """Test that decorator preserves function name and docstring."""
+
         @with_rate_limit_retry()
         def my_function():
             """My function docstring."""

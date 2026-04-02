@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 # --- Enums ---
 
+
 class OrderSide(str, Enum):
     BUY = "buy"
     SELL = "sell"
@@ -60,6 +61,7 @@ class OptionStyle(str, Enum):
 
 # --- Account Models ---
 
+
 class AccountInfo(BaseModel):
     id: str
     account_number: str
@@ -93,6 +95,7 @@ class AccountInfo(BaseModel):
 
 # --- Position Models ---
 
+
 class Position(BaseModel):
     asset_id: str
     symbol: str
@@ -116,6 +119,7 @@ class Position(BaseModel):
 
 
 # --- Order Models ---
+
 
 class Order(BaseModel):
     id: str
@@ -156,15 +160,20 @@ class Order(BaseModel):
 
 
 class PlaceOptionOrderRequest(BaseModel):
-    symbol: str = Field(..., description="Option contract symbol (e.g. AAPL241220C00180000)")
+    symbol: str = Field(
+        ..., description="Option contract symbol (e.g. AAPL241220C00180000)"
+    )
     qty: int = Field(..., gt=0, description="Number of contracts")
     side: OrderSide
     order_type: OrderType = OrderType.MARKET
     time_in_force: TimeInForce = TimeInForce.DAY
-    limit_price: Optional[Decimal] = Field(None, description="Required for limit orders")
+    limit_price: Optional[Decimal] = Field(
+        None, description="Required for limit orders"
+    )
 
 
 # --- Options Chain Models ---
+
 
 class OptionGreeks(BaseModel):
     delta: Optional[float] = None
@@ -213,6 +222,7 @@ class OptionsChainResponse(BaseModel):
 
 # --- Watchlist Models ---
 
+
 class WatchlistItem(BaseModel):
     id: Optional[int] = None
     symbol: str
@@ -227,6 +237,7 @@ class WatchlistResponse(BaseModel):
 
 # --- Alert Config Models ---
 
+
 class AlertConfig(BaseModel):
     id: Optional[int] = None
     symbol: str
@@ -240,6 +251,7 @@ class AlertConfig(BaseModel):
 
 # --- Multi-Leg Order Models ---
 
+
 class SpreadType(str, Enum):
     VERTICAL = "vertical"
     CONDOR = "condor"
@@ -251,7 +263,9 @@ class SpreadLeg(BaseModel):
     symbol: str = Field(..., description="Option contract symbol")
     ratio_qty: float = Field(1.0, description="Proportional quantity for this leg")
     side: OrderSide
-    position_intent: str = Field(..., description="buy_to_open, buy_to_close, sell_to_open, sell_to_close")
+    position_intent: str = Field(
+        ..., description="buy_to_open, buy_to_close, sell_to_open, sell_to_close"
+    )
 
 
 class SpreadOrderRequest(BaseModel):
@@ -286,6 +300,7 @@ class StrangleRequest(BaseModel):
 
 # --- P&L Tracking Models ---
 
+
 class PositionSnapshot(BaseModel):
     id: Optional[int] = None
     symbol: str
@@ -311,6 +326,7 @@ class PositionPnL(BaseModel):
 
 
 # --- API Response Models ---
+
 
 class SuccessResponse(BaseModel):
     success: bool = True

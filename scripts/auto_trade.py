@@ -51,7 +51,9 @@ async def check_stock_exits(dry_run: bool) -> dict:
                 continue
             # Skip symbols known to be inactive/untradable
             if sym in skip_symbols:
-                result["errors"].append(f"Skipping {sym}: marked as inactive/not tradable")
+                result["errors"].append(
+                    f"Skipping {sym}: marked as inactive/not tradable"
+                )
                 continue
             order = executor.place_market_order(sym, qty, "sell")
             if order.success:
@@ -63,7 +65,11 @@ async def check_stock_exits(dry_run: bool) -> dict:
                     await journal.log_exit(open_trade["id"], current_price, reason)
             else:
                 err_lower = (order.error or "").lower()
-                if "not active" in err_lower or "not tradable" in err_lower or "asset" in err_lower:
+                if (
+                    "not active" in err_lower
+                    or "not tradable" in err_lower
+                    or "asset" in err_lower
+                ):
                     # Permanently skip this symbol until manually cleared
                     if sym not in skip_symbols:
                         skip_symbols.append(sym)
@@ -86,7 +92,9 @@ async def main() -> None:
     parser = argparse.ArgumentParser(description="Auto-trade cron job.")
     parser.add_argument("--dry-run", action="store_true", help="Force dry-run mode")
     parser.add_argument("--format", choices=["text", "json"], default="text")
-    parser.add_argument("--force", action="store_true", help="Run even if market closed")
+    parser.add_argument(
+        "--force", action="store_true", help="Run even if market closed"
+    )
     args = parser.parse_args()
 
     await db.init_db()
@@ -102,6 +110,7 @@ async def main() -> None:
 
     if trading_mode == "options":
         from alpaca_trader.engine.options_trader import OptionsTrader
+
         trader = OptionsTrader(dry_run=args.dry_run)
     else:
         trader = AutoTrader(dry_run=args.dry_run)
@@ -125,20 +134,28 @@ async def main() -> None:
 
     # Always manage stock exits even in options mode
     stock_exit_result = await check_stock_exits(dry_run=args.dry_run)
-    summary["exits_executed"] = summary.get("exits_executed", 0) + stock_exit_result["exits_executed"]
+    summary["exits_executed"] = (
+        summary.get("exits_executed", 0) + stock_exit_result["exits_executed"]
+    )
     summary.setdefault("errors", []).extend(stock_exit_result.get("errors", []))
 
     # Record equity snapshot
     try:
         from alpaca_trader.core import client as alpaca
+
         account = alpaca.get_account()
         equity = float(account.get("equity") or 0)
         portfolio_value = float(account.get("portfolio_value") or 0)
-        await db.setting_set("last_equity_snapshot", json.dumps({
-            "equity": equity,
-            "portfolio_value": portfolio_value,
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-        }))
+        await db.setting_set(
+            "last_equity_snapshot",
+            json.dumps(
+                {
+                    "equity": equity,
+                    "portfolio_value": portfolio_value,
+                    "timestamp": datetime.now(timezone.utc).isoformat(),
+                }
+            ),
+        )
     except Exception:
         pass
 

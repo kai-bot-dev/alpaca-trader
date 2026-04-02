@@ -23,10 +23,18 @@ from alpaca_trader.alerts.formatter import format_alert_telegram
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Deliver pending alerts to Telegram via OpenClaw.")
-    parser.add_argument("--dry-run", action="store_true", help="Print alerts without marking delivered")
-    parser.add_argument("--no-mark-delivered", action="store_true", help="Skip marking alerts delivered")
-    parser.add_argument("--format", choices=["json", "text"], default="json", help="Output format")
+    parser = argparse.ArgumentParser(
+        description="Deliver pending alerts to Telegram via OpenClaw."
+    )
+    parser.add_argument(
+        "--dry-run", action="store_true", help="Print alerts without marking delivered"
+    )
+    parser.add_argument(
+        "--no-mark-delivered", action="store_true", help="Skip marking alerts delivered"
+    )
+    parser.add_argument(
+        "--format", choices=["json", "text"], default="json", help="Output format"
+    )
     args = parser.parse_args()
 
     queue = TelegramDeliveryQueue()
@@ -44,19 +52,23 @@ def main() -> None:
 
     for entry in pending:
         text = format_alert_telegram(entry)
-        output_alerts.append({
-            "queue_id": entry["queue_id"],
-            "alert_id": entry.get("alert_id"),
-            "symbol": entry.get("symbol"),
-            "alert_type": entry.get("alert_type"),
-            "severity": entry.get("severity", "info"),
-            "triggered_at": entry.get("triggered_at"),
-            "text": text,
-        })
+        output_alerts.append(
+            {
+                "queue_id": entry["queue_id"],
+                "alert_id": entry.get("alert_id"),
+                "symbol": entry.get("symbol"),
+                "alert_type": entry.get("alert_type"),
+                "severity": entry.get("severity", "info"),
+                "triggered_at": entry.get("triggered_at"),
+                "text": text,
+            }
+        )
         delivered_ids.append(entry["queue_id"])
 
     if args.format == "json":
-        print(json.dumps({"count": len(output_alerts), "alerts": output_alerts}, indent=2))
+        print(
+            json.dumps({"count": len(output_alerts), "alerts": output_alerts}, indent=2)
+        )
     else:
         for a in output_alerts:
             print(f"[{a['severity'].upper()}] {a['text']}")

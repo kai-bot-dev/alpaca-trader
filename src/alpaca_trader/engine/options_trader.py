@@ -30,14 +30,14 @@ MAX_TOTAL_PREMIUM_PCT = 0.10  # 10% of portfolio total options exposure
 
 # Correlation groups — max 1 position per group
 CORRELATION_GROUPS = {
-    'mega_tech': {'AAPL', 'MSFT', 'GOOGL', 'META', 'AMZN'},
-    'semiconductors': {'NVDA', 'AMD', 'ARM'},
-    'index_etfs': {'SPY', 'QQQ'},
-    'ev_momentum': {'TSLA'},
-    'fintech': {'SQ', 'SOFI', 'COIN'},
-    'social_media': {'SNAP', 'ROKU'},
-    'crypto_adjacent': {'COIN', 'MARA'},
-    'retail': {'SHOP', 'UBER'},
+    "mega_tech": {"AAPL", "MSFT", "GOOGL", "META", "AMZN"},
+    "semiconductors": {"NVDA", "AMD", "ARM"},
+    "index_etfs": {"SPY", "QQQ"},
+    "ev_momentum": {"TSLA"},
+    "fintech": {"SQ", "SOFI", "COIN"},
+    "social_media": {"SNAP", "ROKU"},
+    "crypto_adjacent": {"COIN", "MARA"},
+    "retail": {"SHOP", "UBER"},
 }
 
 
@@ -73,6 +73,7 @@ def is_market_open(now: Optional[datetime] = None) -> bool:
 def _get_chain_expiry_range():
     """Return (gte, lte) date range for 4-8 DTE options."""
     from datetime import date
+
     today = date.today()
     return today + timedelta(days=4), today + timedelta(days=8)
 
@@ -106,7 +107,9 @@ class OptionsTrader:
         self.position_manager = position_manager or OptionsPositionManager()
         self.trade_journal = trade_journal or TradeJournal()
         self.scanner = scanner or WatchlistScanner()
-        self.strike_selector = strike_selector  # initialized in run_cycle after fetching portfolio_value
+        self.strike_selector = (
+            strike_selector  # initialized in run_cycle after fetching portfolio_value
+        )
         self._dry_run = dry_run
         self._trades_today: int = 0
 
@@ -179,7 +182,9 @@ class OptionsTrader:
             logger.info("OptionsTrader: cycle skipped — market closed")
             return summary
         if self.risk_manager.is_circuit_broken:
-            summary["errors"].append(f"Circuit breaker: {self.risk_manager._circuit_broken_reason}")
+            summary["errors"].append(
+                f"Circuit breaker: {self.risk_manager._circuit_broken_reason}"
+            )
             return summary
 
         # Check market regime
@@ -189,7 +194,9 @@ class OptionsTrader:
             summary["regime_confidence"] = round(market_regime.confidence, 2)
             logger.info(
                 "OptionsTrader: market regime=%s rsi=%.1f confidence=%.2f",
-                market_regime.regime, market_regime.spy_rsi, market_regime.confidence,
+                market_regime.regime,
+                market_regime.spy_rsi,
+                market_regime.confidence,
             )
         except Exception as e:
             summary["errors"].append(f"Regime check failed: {e}")
@@ -198,28 +205,36 @@ class OptionsTrader:
         # Fetch account
         try:
             from alpaca_trader.core import client as alpaca
+
             account = alpaca.get_account()
             portfolio_value = float(account.get("portfolio_value") or 0)
             cash = float(account.get("cash") or 0)
-            daily_pnl = float(account.get("equity", portfolio_value) or 0) - portfolio_value
+            daily_pnl = (
+                float(account.get("equity", portfolio_value) or 0) - portfolio_value
+            )
         except Exception as e:
             summary["errors"].append(f"Account fetch failed: {e}")
             logger.error("OptionsTrader: account fetch failed: %s", e)
             return summary
 
         # Initialize StrikeSelector with live portfolio_value
-        selector = self.strike_selector or StrikeSelector(portfolio_value=portfolio_value)
+        selector = self.strike_selector or StrikeSelector(
+            portfolio_value=portfolio_value
+        )
 
         # Check open option positions for exits
         try:
             from alpaca_trader.core import client as alpaca
+
             positions = alpaca.get_positions()
         except Exception as e:
             summary["errors"].append(f"Positions fetch failed: {e}")
             positions = []
 
         open_journal = await self.trade_journal.get_trades(status="open", limit=200)
-        exits = self.position_manager.check_exits(positions, journal_entries=open_journal)
+        exits = self.position_manager.check_exits(
+            positions, journal_entries=open_journal
+        )
         summary["exits_checked"] = len(positions)
 
         for exit_pos in exits:
@@ -242,12 +257,20 @@ class OptionsTrader:
                             open_trade = jt
                             break
                     if open_trade is None:
-                        open_trade = await self.trade_journal.get_open_trade_for_symbol(symbol)
+                        open_trade = await self.trade_journal.get_open_trade_for_symbol(
+                            symbol
+                        )
                     if open_trade:
-                        await self.trade_journal.log_exit(open_trade["id"], current_price, exit_reason)
-                    logger.info("Options exit: %s qty=%d reason=%s", symbol, qty, exit_reason)
+                        await self.trade_journal.log_exit(
+                            open_trade["id"], current_price, exit_reason
+                        )
+                    logger.info(
+                        "Options exit: %s qty=%d reason=%s", symbol, qty, exit_reason
+                    )
                 else:
-                    summary["errors"].append(f"Exit order failed for {symbol}: {result.error}")
+                    summary["errors"].append(
+                        f"Exit order failed for {symbol}: {result.error}"
+                    )
             except Exception as e:
                 summary["errors"].append(f"Exit error for {symbol}: {e}")
                 logger.error("OptionsTrader: exit error for %s: %s", symbol, e)
@@ -276,7 +299,9 @@ class OptionsTrader:
 
         for strategy in ("bb_rsi_reversal", "bounce"):
             try:
-                for s in self.scanner.scan(symbols, strategy=strategy, period="15Min", limit=100):
+                for s in self.scanner.scan(
+                    symbols, strategy=strategy, period="15Min", limit=100
+                ):
                     if s.detected:
                         existing = best_by_symbol.get(s.symbol)
                         if existing is None or s.strength > existing.strength:  # type: ignore[union-attr]
@@ -301,7 +326,8 @@ class OptionsTrader:
         if total_daily_theta > theta_limit:
             logger.info(
                 "OptionsTrader: portfolio theta limit reached (%.2f/day > limit %.2f)",
-                total_daily_theta, theta_limit,
+                total_daily_theta,
+                theta_limit,
             )
             summary["errors"].append(
                 f"portfolio theta limit reached ({total_daily_theta:.2f}/day)"
@@ -325,7 +351,9 @@ class OptionsTrader:
         for signal in actionable:
             underlying = signal.symbol
             if open_positions_count >= MAX_CONCURRENT_OPTION_POSITIONS:
-                logger.info("OptionsTrader: max positions reached (%d)", open_positions_count)
+                logger.info(
+                    "OptionsTrader: max positions reached (%d)", open_positions_count
+                )
                 break
 
             # Skip if we already hold an option on this underlying
@@ -361,7 +389,8 @@ class OptionsTrader:
                         if held_group == corr_group:
                             logger.info(
                                 "OptionsTrader: skipping %s, already holding correlated position in %s",
-                                underlying, corr_group,
+                                underlying,
+                                corr_group,
                             )
                             corr_collision = True
                             break
@@ -374,11 +403,16 @@ class OptionsTrader:
                     if earnings_check.should_skip:
                         logger.info(
                             "OptionsTrader: skipping %s — earnings filter: %s",
-                            underlying, earnings_check.reason,
+                            underlying,
+                            earnings_check.reason,
                         )
                         continue
                 except Exception as _e:
-                    logger.warning("OptionsTrader: earnings check failed for %s: %s", underlying, _e)
+                    logger.warning(
+                        "OptionsTrader: earnings check failed for %s: %s",
+                        underlying,
+                        _e,
+                    )
 
                 # IV Rank filter — skip if IV too expensive; reduce size if mid-range
                 iv_size_factor = 1.0
@@ -387,7 +421,8 @@ class OptionsTrader:
                     if iv_result.is_expensive:
                         logger.info(
                             "OptionsTrader: skipping %s, IV too expensive (rank=%.1f)",
-                            underlying, iv_result.iv_rank,
+                            underlying,
+                            iv_result.iv_rank,
                         )
                         continue
                     elif not iv_result.is_cheap:
@@ -395,17 +430,22 @@ class OptionsTrader:
                         iv_size_factor = 0.75
                         logger.info(
                             "OptionsTrader: %s IV rank=%.1f (neutral) — reducing size to 75%%",
-                            underlying, iv_result.iv_rank,
+                            underlying,
+                            iv_result.iv_rank,
                         )
                     else:
                         logger.info(
                             "OptionsTrader: %s IV rank=%.1f (cheap) — full size",
-                            underlying, iv_result.iv_rank,
+                            underlying,
+                            iv_result.iv_rank,
                         )
                 except Exception as _e:
-                    logger.warning("OptionsTrader: IV rank check failed for %s: %s", underlying, _e)
+                    logger.warning(
+                        "OptionsTrader: IV rank check failed for %s: %s", underlying, _e
+                    )
 
                 from alpaca_trader.core import client as alpaca
+
                 expiry_gte, expiry_lte = _get_chain_expiry_range()
                 chain = alpaca.get_option_chain(
                     underlying_symbol=underlying,
@@ -415,12 +455,18 @@ class OptionsTrader:
                     limit=100,
                 )
                 if not chain:
-                    logger.info("OptionsTrader: empty chain for %s %s", underlying, option_type)
+                    logger.info(
+                        "OptionsTrader: empty chain for %s %s", underlying, option_type
+                    )
                     continue
 
                 contract = selector.select_contract(underlying, direction, chain)
                 if contract is None:
-                    logger.info("OptionsTrader: no suitable contract for %s %s", underlying, direction)
+                    logger.info(
+                        "OptionsTrader: no suitable contract for %s %s",
+                        underlying,
+                        direction,
+                    )
                     continue
 
                 option_symbol = contract["symbol"]
@@ -438,10 +484,9 @@ class OptionsTrader:
                     contracts_qty = max(1, contracts_qty // 2)
                     logger.info(
                         "OptionsTrader: neutral regime — halved contracts to %d for %s",
-                        contracts_qty, option_symbol,
+                        contracts_qty,
+                        option_symbol,
                     )
-
-                option_value = ask_price * 100 * contracts_qty
 
                 # Risk check on the premium cost
                 risk_result = self.risk_manager.check_order(
@@ -456,12 +501,18 @@ class OptionsTrader:
                     trades_today=self._trades_today,
                 )
                 if risk_result.rejected:
-                    logger.info("OptionsTrader: risk rejected %s: %s", option_symbol, risk_result.reason)
+                    logger.info(
+                        "OptionsTrader: risk rejected %s: %s",
+                        option_symbol,
+                        risk_result.reason,
+                    )
                     continue
 
                 summary["entries_approved"] += 1
 
-                order_result = self.order_executor.place_market_order(option_symbol, contracts_qty, "buy")
+                order_result = self.order_executor.place_market_order(
+                    option_symbol, contracts_qty, "buy"
+                )
                 if order_result.success:
                     summary["entries_executed"] += 1
                     self._trades_today += 1
@@ -488,10 +539,16 @@ class OptionsTrader:
                     )
                     logger.info(
                         "Options entry: %s %s contracts=%d premium=%.2f trade_id=%d",
-                        underlying, option_symbol, contracts_qty, ask_price, trade_id,
+                        underlying,
+                        option_symbol,
+                        contracts_qty,
+                        ask_price,
+                        trade_id,
                     )
                 else:
-                    summary["errors"].append(f"Entry order failed for {option_symbol}: {order_result.error}")
+                    summary["errors"].append(
+                        f"Entry order failed for {option_symbol}: {order_result.error}"
+                    )
 
             except Exception as e:
                 summary["errors"].append(f"Entry error for {underlying}: {e}")

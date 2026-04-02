@@ -2,9 +2,6 @@
 
 import asyncio
 import pytest
-import pytest_asyncio
-import tempfile
-import os
 
 import aiosqlite
 
@@ -168,9 +165,9 @@ class TestGetStats:
         t1 = run(journal.log_entry("A", "buy", 10, 100.0, "test"))
         t2 = run(journal.log_entry("B", "buy", 10, 100.0, "test"))
         t3 = run(journal.log_entry("C", "buy", 10, 100.0, "test"))
-        run(journal.log_exit(t1, 110.0, "tp"))   # +100
-        run(journal.log_exit(t2, 115.0, "tp"))   # +150
-        run(journal.log_exit(t3, 90.0, "sl"))    # -100
+        run(journal.log_exit(t1, 110.0, "tp"))  # +100
+        run(journal.log_exit(t2, 115.0, "tp"))  # +150
+        run(journal.log_exit(t3, 90.0, "sl"))  # -100
         stats = run(journal.get_stats())
         assert stats["total_trades"] == 3
         assert stats["win_rate"] == pytest.approx(2 / 3)

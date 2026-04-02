@@ -2,7 +2,6 @@
 
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Optional
 
 import aiosqlite
@@ -183,6 +182,7 @@ async def init_db() -> None:
 
 # --- Watchlist Operations ---
 
+
 async def watchlist_add(symbol: str, notes: Optional[str] = None) -> bool:
     """Add a symbol to the watchlist. Returns True if added, False if already exists."""
     try:
@@ -211,20 +211,21 @@ async def watchlist_list() -> list[dict]:
     """Get all watchlist items."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
-        cursor = await db.execute(
-            "SELECT * FROM watchlist ORDER BY added_at DESC"
-        )
+        cursor = await db.execute("SELECT * FROM watchlist ORDER BY added_at DESC")
         rows = await cursor.fetchall()
         return [dict(row) for row in rows]
 
 
 # --- Order History Operations ---
 
+
 async def upsert_order(order_data: dict) -> None:
     """Insert or update an order in local history."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         import json
-        await db.execute("""
+
+        await db.execute(
+            """
             INSERT INTO order_history (
                 id, symbol, side, qty, filled_qty, order_type, status,
                 limit_price, filled_avg_price, submitted_at, filled_at,
@@ -238,23 +239,25 @@ async def upsert_order(order_data: dict) -> None:
                 canceled_at=excluded.canceled_at,
                 raw_json=excluded.raw_json,
                 updated_at=excluded.updated_at
-        """, (
-            order_data.get("id"),
-            order_data.get("symbol"),
-            order_data.get("side"),
-            order_data.get("qty"),
-            order_data.get("filled_qty"),
-            order_data.get("order_type") or order_data.get("type"),
-            order_data.get("status"),
-            order_data.get("limit_price"),
-            order_data.get("filled_avg_price"),
-            order_data.get("submitted_at"),
-            order_data.get("filled_at"),
-            order_data.get("canceled_at"),
-            order_data.get("asset_class"),
-            json.dumps(order_data),
-            datetime.now(timezone.utc).isoformat(),
-        ))
+        """,
+            (
+                order_data.get("id"),
+                order_data.get("symbol"),
+                order_data.get("side"),
+                order_data.get("qty"),
+                order_data.get("filled_qty"),
+                order_data.get("order_type") or order_data.get("type"),
+                order_data.get("status"),
+                order_data.get("limit_price"),
+                order_data.get("filled_avg_price"),
+                order_data.get("submitted_at"),
+                order_data.get("filled_at"),
+                order_data.get("canceled_at"),
+                order_data.get("asset_class"),
+                json.dumps(order_data),
+                datetime.now(timezone.utc).isoformat(),
+            ),
+        )
         await db.commit()
 
 
@@ -278,6 +281,7 @@ async def get_orders(status: Optional[str] = None, limit: int = 100) -> list[dic
 
 # --- Alert Config Operations ---
 
+
 async def alert_add(
     symbol: str,
     alert_type: str,
@@ -295,7 +299,9 @@ async def alert_add(
         return cursor.lastrowid
 
 
-async def alert_list(symbol: Optional[str] = None, active_only: bool = True) -> list[dict]:
+async def alert_list(
+    symbol: Optional[str] = None, active_only: bool = True
+) -> list[dict]:
     """Get alert configurations."""
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
@@ -313,6 +319,7 @@ async def alert_list(symbol: Optional[str] = None, active_only: bool = True) -> 
 
 
 # --- Position P&L Snapshot Operations ---
+
 
 async def save_position_snapshot(snapshot: dict) -> int:
     """Save a single position snapshot. Returns the new row ID."""
@@ -371,6 +378,7 @@ async def setting_set(key: str, value: str) -> None:
 
 # --- Sprint 5: Alerts Operations ---
 
+
 async def alerts_add(
     alert_type: str,
     symbol: str,
@@ -379,6 +387,7 @@ async def alerts_add(
 ) -> int:
     """Add an alert. Returns the new alert ID."""
     import json
+
     async with aiosqlite.connect(DATABASE_URL) as db:
         cursor = await db.execute(
             """INSERT INTO alerts (alert_type, symbol, condition_json, status, message)
@@ -396,6 +405,7 @@ async def alerts_list(
 ) -> list[dict]:
     """List alerts with optional filters."""
     import json
+
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         query = "SELECT * FROM alerts WHERE 1=1"
@@ -426,6 +436,7 @@ async def alerts_list(
 async def alerts_get(alert_id: int) -> Optional[dict]:
     """Get a single alert by ID."""
     import json
+
     async with aiosqlite.connect(DATABASE_URL) as db:
         db.row_factory = aiosqlite.Row
         cursor = await db.execute("SELECT * FROM alerts WHERE id = ?", (alert_id,))

@@ -28,7 +28,10 @@ class AlertChecker:
                 alert["triggered_at"] = datetime.now(timezone.utc).isoformat()
                 triggered.append(alert)
         if triggered:
-            logger.info("Alerts triggered", extra={"triggered": len(triggered), "total": len(alerts)})
+            logger.info(
+                "Alerts triggered",
+                extra={"triggered": len(triggered), "total": len(alerts)},
+            )
         return triggered
 
     async def _check_alert(self, alert: dict) -> Optional[str]:
@@ -98,10 +101,13 @@ class AlertChecker:
                 # OCC symbol: underlying(variable) + YYMMDD + type + strike(8 digits)
                 # Find the date part by looking for 6-digit date after the letters
                 import re
-                match = re.search(r'(\d{6})[CP]', pos_symbol)
+
+                match = re.search(r"(\d{6})[CP]", pos_symbol)
                 if match:
                     date_str = match.group(1)
-                    expiry = date(2000 + int(date_str[:2]), int(date_str[2:4]), int(date_str[4:6]))
+                    expiry = date(
+                        2000 + int(date_str[:2]), int(date_str[2:4]), int(date_str[4:6])
+                    )
                     days_to_expiry = (expiry - today).days
                     if 0 <= days_to_expiry <= days_threshold:
                         return f"EXPIRY {pos_symbol}: {days_to_expiry}d to expiry ({expiry})"

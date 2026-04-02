@@ -2,18 +2,15 @@
 
 import asyncio
 import json
-import sys
 import uuid
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Optional
 
 import typer
-from rich import print as rprint
 from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
-from rich.text import Text
 
 from alpaca_trader.core.logging_config import setup_logging
 from alpaca_trader.core import client as alpaca
@@ -34,10 +31,13 @@ app = typer.Typer(
 
 @app.callback()
 def main_callback(
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Enable verbose (DEBUG) logging output"),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v", help="Enable verbose (DEBUG) logging output"
+    ),
 ) -> None:
     """Initialize logging on CLI startup."""
     setup_logging(level="DEBUG" if verbose else None)
+
 
 console = Console()
 
@@ -92,6 +92,7 @@ def _fmt_pct(value) -> str:
 
 # --- account command ---
 
+
 @app.command()
 def account(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
@@ -130,11 +131,18 @@ def account(
 
 # --- positions command ---
 
+
 @app.command()
 def positions(
-    history: bool = typer.Option(False, "--history", help="Show P&L history over time per position"),
-    summary: bool = typer.Option(False, "--summary", help="Show portfolio-level P&L summary"),
-    days: int = typer.Option(30, "--days", help="Days of history to show (with --history)"),
+    history: bool = typer.Option(
+        False, "--history", help="Show P&L history over time per position"
+    ),
+    summary: bool = typer.Option(
+        False, "--summary", help="Show portfolio-level P&L summary"
+    ),
+    days: int = typer.Option(
+        30, "--days", help="Days of history to show (with --history)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Show current open positions with P&L."""
@@ -154,8 +162,12 @@ def positions(
         t = Table(show_header=False, box=None)
         t.add_column("Metric", style="dim", width=24)
         t.add_column("Value")
-        t.add_row("Total Unrealized P&L", _fmt_decimal(summary_data["total_unrealized_pnl"]))
-        t.add_row("Total Realized P&L", _fmt_decimal(summary_data["total_realized_pnl"]))
+        t.add_row(
+            "Total Unrealized P&L", _fmt_decimal(summary_data["total_unrealized_pnl"])
+        )
+        t.add_row(
+            "Total Realized P&L", _fmt_decimal(summary_data["total_realized_pnl"])
+        )
         t.add_row("Total P&L", _fmt_decimal(summary_data["total_pnl"]))
         console.print(t)
         return
@@ -182,7 +194,9 @@ def positions(
 
         for sym, snaps in all_history.items():
             if not snaps:
-                console.print(f"[dim]{sym}: no history (run 'positions --snapshot' to record)[/dim]")
+                console.print(
+                    f"[dim]{sym}: no history (run 'positions --snapshot' to record)[/dim]"
+                )
                 continue
             table = Table(title=f"{sym} — P&L History ({days}d)")
             table.add_column("Timestamp", style="dim")
@@ -243,9 +257,12 @@ def positions(
 
 # --- orders command ---
 
+
 @app.command()
 def orders(
-    status: Optional[str] = typer.Option(None, "--status", help="Filter: open, closed, all"),
+    status: Optional[str] = typer.Option(
+        None, "--status", help="Filter: open, closed, all"
+    ),
     limit: int = typer.Option(20, "--limit", help="Max number of orders to show"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
@@ -281,7 +298,9 @@ def orders(
     for o in data:
         order_id = str(o.get("id", ""))[:8] + "..."
         side = o.get("side", "—")
-        side_styled = f"[green]{side}[/green]" if side == "buy" else f"[red]{side}[/red]"
+        side_styled = (
+            f"[green]{side}[/green]" if side == "buy" else f"[red]{side}[/red]"
+        )
         status_val = str(o.get("status", "—"))
         submitted = str(o.get("submitted_at", "—"))[:19]
 
@@ -302,13 +321,20 @@ def orders(
 
 # --- chain command ---
 
+
 @app.command()
 def chain(
     ticker: str = typer.Argument(..., help="Underlying ticker symbol (e.g. AAPL)"),
-    expiry: Optional[str] = typer.Option(None, "--expiry", help="Expiration date (YYYY-MM-DD)"),
+    expiry: Optional[str] = typer.Option(
+        None, "--expiry", help="Expiration date (YYYY-MM-DD)"
+    ),
     option_type: Optional[str] = typer.Option(None, "--type", help="call or put"),
-    strike_min: Optional[float] = typer.Option(None, "--strike-min", help="Min strike price"),
-    strike_max: Optional[float] = typer.Option(None, "--strike-max", help="Max strike price"),
+    strike_min: Optional[float] = typer.Option(
+        None, "--strike-min", help="Min strike price"
+    ),
+    strike_max: Optional[float] = typer.Option(
+        None, "--strike-max", help="Max strike price"
+    ),
     limit: int = typer.Option(50, "--limit", help="Max contracts to fetch"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
@@ -360,7 +386,11 @@ def chain(
     for c in contracts:
         greeks = c.get("greeks") or {}
         opt_type = c.get("type") or c.get("option_type") or "—"
-        type_styled = f"[green]{opt_type}[/green]" if opt_type == "call" else f"[red]{opt_type}[/red]"
+        type_styled = (
+            f"[green]{opt_type}[/green]"
+            if opt_type == "call"
+            else f"[red]{opt_type}[/red]"
+        )
         iv = greeks.get("implied_volatility") or c.get("implied_volatility")
         iv_str = f"{float(iv)*100:.1f}%" if iv else "—"
         delta = greeks.get("delta")
@@ -384,13 +414,16 @@ def chain(
 
 # --- buy-call command ---
 
+
 @app.command(name="buy-call")
 def buy_call(
     ticker: str = typer.Argument(..., help="Underlying ticker symbol"),
     expiry: str = typer.Option(..., "--expiry", help="Expiration date (YYYY-MM-DD)"),
     strike: float = typer.Option(..., "--strike", help="Strike price"),
     qty: int = typer.Option(1, "--qty", help="Number of contracts"),
-    limit_price: Optional[float] = typer.Option(None, "--limit", help="Limit price (market order if omitted)"),
+    limit_price: Optional[float] = typer.Option(
+        None, "--limit", help="Limit price (market order if omitted)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Buy a call option."""
@@ -426,13 +459,16 @@ def buy_call(
 
 # --- buy-put command ---
 
+
 @app.command(name="buy-put")
 def buy_put(
     ticker: str = typer.Argument(..., help="Underlying ticker symbol"),
     expiry: str = typer.Option(..., "--expiry", help="Expiration date (YYYY-MM-DD)"),
     strike: float = typer.Option(..., "--strike", help="Strike price"),
     qty: int = typer.Option(1, "--qty", help="Number of contracts"),
-    limit_price: Optional[float] = typer.Option(None, "--limit", help="Limit price (market order if omitted)"),
+    limit_price: Optional[float] = typer.Option(
+        None, "--limit", help="Limit price (market order if omitted)"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Buy a put option."""
@@ -468,20 +504,29 @@ def buy_put(
 
 # --- spread command ---
 
+
 @app.command()
 def spread(
     ticker: str = typer.Argument(..., help="Underlying ticker symbol (e.g. AAPL)"),
-    spread_type: str = typer.Option(..., "--type", help="Spread type: vertical, condor, straddle, strangle"),
+    spread_type: str = typer.Option(
+        ..., "--type", help="Spread type: vertical, condor, straddle, strangle"
+    ),
     expiry: str = typer.Option(..., "--expiry", help="Expiration date (YYYY-MM-DD)"),
-    strike: float = typer.Option(None, "--strike", help="Strike price (required for vertical/straddle/strangle)"),
-    width: Optional[float] = typer.Option(None, "--width", help="Strike width in points (vertical/condor/strangle)"),
+    strike: float = typer.Option(
+        None, "--strike", help="Strike price (required for vertical/straddle/strangle)"
+    ),
+    width: Optional[float] = typer.Option(
+        None, "--width", help="Strike width in points (vertical/condor/strangle)"
+    ),
     qty: int = typer.Option(1, "--qty", help="Number of contracts"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Place a multi-leg spread order (vertical, condor, straddle, strangle)."""
     valid_types = ("vertical", "condor", "straddle", "strangle")
     if spread_type not in valid_types:
-        console.print(f"[red]Invalid spread type.[/red] Choose from: {', '.join(valid_types)}")
+        console.print(
+            f"[red]Invalid spread type.[/red] Choose from: {', '.join(valid_types)}"
+        )
         raise typer.Exit(1)
 
     try:
@@ -495,46 +540,107 @@ def spread(
             if strike is None:
                 console.print("[red]--strike is required for straddle[/red]")
                 raise typer.Exit(1)
-            console.print(f"Placing [cyan]straddle[/cyan] on {ticker.upper()} {expiry} @{strike} x{qty}...")
+            console.print(
+                f"Placing [cyan]straddle[/cyan] on {ticker.upper()} {expiry} @{strike} x{qty}..."
+            )
             order = alpaca.place_straddle(ticker.upper(), expiry_date, strike, qty=qty)
 
         elif spread_type == "strangle":
             if strike is None or width is None:
-                console.print("[red]--strike (call strike) and --width (put strike distance) are required for strangle[/red]")
+                console.print(
+                    "[red]--strike (call strike) and --width (put strike distance) are required for strangle[/red]"
+                )
                 raise typer.Exit(1)
             call_strike = strike
             put_strike = strike - width
-            console.print(f"Placing [cyan]strangle[/cyan] on {ticker.upper()} {expiry} call@{call_strike} put@{put_strike} x{qty}...")
-            order = alpaca.place_strangle(ticker.upper(), expiry_date, call_strike, put_strike, qty=qty)
+            console.print(
+                f"Placing [cyan]strangle[/cyan] on {ticker.upper()} {expiry} call@{call_strike} put@{put_strike} x{qty}..."
+            )
+            order = alpaca.place_strangle(
+                ticker.upper(), expiry_date, call_strike, put_strike, qty=qty
+            )
 
         elif spread_type == "vertical":
             if strike is None or width is None:
-                console.print("[red]--strike (long strike) and --width (spread width) are required for vertical[/red]")
+                console.print(
+                    "[red]--strike (long strike) and --width (spread width) are required for vertical[/red]"
+                )
                 raise typer.Exit(1)
             long_strike = strike
             short_strike = strike + width
-            long_sym = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", long_strike)
-            short_sym = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", short_strike)
-            console.print(f"Placing [cyan]vertical spread[/cyan]: buy {long_sym} / sell {short_sym} x{qty}...")
-            leg1 = {"symbol": long_sym, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"}
-            leg2 = {"symbol": short_sym, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"}
+            long_sym = alpaca.build_option_symbol(
+                ticker.upper(), expiry_date, "call", long_strike
+            )
+            short_sym = alpaca.build_option_symbol(
+                ticker.upper(), expiry_date, "call", short_strike
+            )
+            console.print(
+                f"Placing [cyan]vertical spread[/cyan]: buy {long_sym} / sell {short_sym} x{qty}..."
+            )
+            leg1 = {
+                "symbol": long_sym,
+                "ratio_qty": 1.0,
+                "side": "buy",
+                "position_intent": "buy_to_open",
+            }
+            leg2 = {
+                "symbol": short_sym,
+                "ratio_qty": 1.0,
+                "side": "sell",
+                "position_intent": "sell_to_open",
+            }
             order = alpaca.place_spread_order(leg1, leg2, qty=qty)
 
         elif spread_type == "condor":
             if strike is None or width is None:
-                console.print("[red]--strike (lowest strike) and --width (wing width) are required for condor[/red]")
+                console.print(
+                    "[red]--strike (lowest strike) and --width (wing width) are required for condor[/red]"
+                )
                 raise typer.Exit(1)
-            s1, s2, s3, s4 = strike, strike + width, strike + width * 2, strike + width * 3
+            s1, s2, s3, s4 = (
+                strike,
+                strike + width,
+                strike + width * 2,
+                strike + width * 3,
+            )
             put_buy = alpaca.build_option_symbol(ticker.upper(), expiry_date, "put", s1)
-            put_sell = alpaca.build_option_symbol(ticker.upper(), expiry_date, "put", s2)
-            call_sell = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", s3)
-            call_buy = alpaca.build_option_symbol(ticker.upper(), expiry_date, "call", s4)
-            console.print(f"Placing [cyan]iron condor[/cyan] on {ticker.upper()} {expiry}: {s1}/{s2}/{s3}/{s4} x{qty}...")
+            put_sell = alpaca.build_option_symbol(
+                ticker.upper(), expiry_date, "put", s2
+            )
+            call_sell = alpaca.build_option_symbol(
+                ticker.upper(), expiry_date, "call", s3
+            )
+            call_buy = alpaca.build_option_symbol(
+                ticker.upper(), expiry_date, "call", s4
+            )
+            console.print(
+                f"Placing [cyan]iron condor[/cyan] on {ticker.upper()} {expiry}: {s1}/{s2}/{s3}/{s4} x{qty}..."
+            )
             legs = [
-                {"symbol": put_buy, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"},
-                {"symbol": put_sell, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"},
-                {"symbol": call_sell, "ratio_qty": 1.0, "side": "sell", "position_intent": "sell_to_open"},
-                {"symbol": call_buy, "ratio_qty": 1.0, "side": "buy", "position_intent": "buy_to_open"},
+                {
+                    "symbol": put_buy,
+                    "ratio_qty": 1.0,
+                    "side": "buy",
+                    "position_intent": "buy_to_open",
+                },
+                {
+                    "symbol": put_sell,
+                    "ratio_qty": 1.0,
+                    "side": "sell",
+                    "position_intent": "sell_to_open",
+                },
+                {
+                    "symbol": call_sell,
+                    "ratio_qty": 1.0,
+                    "side": "sell",
+                    "position_intent": "sell_to_open",
+                },
+                {
+                    "symbol": call_buy,
+                    "ratio_qty": 1.0,
+                    "side": "buy",
+                    "position_intent": "buy_to_open",
+                },
             ]
             order = alpaca.place_iron_condor(legs, qty=qty)
 
@@ -557,6 +663,7 @@ def spread(
 
 
 # --- cancel command ---
+
 
 @app.command()
 def cancel(
@@ -600,7 +707,9 @@ def watchlist_list(
         return
 
     if not items:
-        console.print("[dim]Watchlist is empty. Use 'alpaca-trader watchlist add SYMBOL' to add symbols.[/dim]")
+        console.print(
+            "[dim]Watchlist is empty. Use 'alpaca-trader watchlist add SYMBOL' to add symbols.[/dim]"
+        )
         return
 
     table = Table(title=f"Watchlist ({len(items)} symbols)")
@@ -671,16 +780,25 @@ def watchlist_remove(
 
 # --- scan command ---
 
+
 @app.command()
 def scan(
-    strategy: str = typer.Option("squeeze", "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal, all"),
-    period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min, 5Min, 1Min"),
+    strategy: str = typer.Option(
+        "squeeze",
+        "--strategy",
+        help="Strategy: squeeze, bounce, trend, bb_rsi_reversal, all",
+    ),
+    period: str = typer.Option(
+        "1D", "--period", help="Bar timeframe: 1D, 1H, 15Min, 5Min, 1Min"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Scan watchlist symbols with a Bollinger Band strategy."""
     valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal", "all")
     if strategy not in valid_strategies:
-        console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
+        console.print(
+            f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}"
+        )
         raise typer.Exit(1)
 
     asyncio.run(db.init_db())
@@ -688,11 +806,15 @@ def scan(
     symbols = [item["symbol"] for item in watchlist_items]
 
     if not symbols:
-        msg = {"error": "Watchlist is empty. Add symbols with: alpaca-trader watchlist add TICKER"}
+        msg = {
+            "error": "Watchlist is empty. Add symbols with: alpaca-trader watchlist add TICKER"
+        }
         if json_output:
             _print_json(msg)
         else:
-            console.print("[yellow]Watchlist is empty.[/yellow] Add symbols with: alpaca-trader watchlist add TICKER")
+            console.print(
+                "[yellow]Watchlist is empty.[/yellow] Add symbols with: alpaca-trader watchlist add TICKER"
+            )
         raise typer.Exit(0)
 
     try:
@@ -701,14 +823,18 @@ def scan(
             # Run all strategies and merge: best signal per symbol wins
             all_strats = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
             best_by_symbol: dict[str, object] = {}
-            all_signals = []
             for strat in all_strats:
                 strat_signals = scanner.scan(symbols, strategy=strat, period=period)
                 for s in strat_signals:
                     existing = best_by_symbol.get(s.symbol)
-                    if existing is None or (s.detected and (not existing.detected or s.strength > existing.strength)):  # type: ignore[union-attr]
+                    if existing is None or (
+                        s.detected
+                        and (not existing.detected or s.strength > existing.strength)
+                    ):  # type: ignore[union-attr]
                         best_by_symbol[s.symbol] = s
-            signals = sorted(best_by_symbol.values(), key=lambda s: (not s.detected, s.symbol))  # type: ignore[arg-type]
+            signals = sorted(
+                best_by_symbol.values(), key=lambda s: (not s.detected, s.symbol)
+            )  # type: ignore[arg-type]
         else:
             signals = scanner.scan(symbols, strategy=strategy, period=period)
     except EnvironmentError as e:
@@ -719,22 +845,26 @@ def scan(
         raise typer.Exit(1)
 
     if json_output:
-        _print_json([
-            {
-                "symbol": s.symbol,
-                "strategy": s.strategy,
-                "detected": s.detected,
-                "direction": s.direction,
-                "strength": s.strength,
-                "details": s.details,
-                "timestamp": s.timestamp,
-            }
-            for s in signals
-        ])
+        _print_json(
+            [
+                {
+                    "symbol": s.symbol,
+                    "strategy": s.strategy,
+                    "detected": s.detected,
+                    "direction": s.direction,
+                    "strength": s.strength,
+                    "details": s.details,
+                    "timestamp": s.timestamp,
+                }
+                for s in signals
+            ]
+        )
         return
 
     title_strat = "ALL STRATEGIES" if strategy == "all" else strategy.upper()
-    table = Table(title=f"Bollinger Scan: {title_strat} ({len(signals)} symbols, {period})")
+    table = Table(
+        title=f"Bollinger Scan: {title_strat} ({len(signals)} symbols, {period})"
+    )
     table.add_column("Symbol", style="bold cyan")
     table.add_column("Strategy")
     table.add_column("Signal")
@@ -745,34 +875,47 @@ def scan(
     for s in signals:
         detected_str = "[green]YES[/green]" if s.detected else "[dim]no[/dim]"
         direction_str = (
-            f"[green]{s.direction}[/green]" if s.direction == "long"
-            else f"[red]{s.direction}[/red]" if s.direction == "short"
+            f"[green]{s.direction}[/green]"
+            if s.direction == "long"
+            else f"[red]{s.direction}[/red]"
+            if s.direction == "short"
             else f"[dim]{s.direction}[/dim]"
         )
         strength_str = f"{s.strength:.2f}" if s.detected else "—"
-        detail_str = ", ".join(f"{k}={v}" for k, v in s.details.items()) if s.details else "—"
+        detail_str = (
+            ", ".join(f"{k}={v}" for k, v in s.details.items()) if s.details else "—"
+        )
 
-        table.add_row(s.symbol, s.strategy, detected_str, direction_str, strength_str, detail_str)
+        table.add_row(
+            s.symbol, s.strategy, detected_str, direction_str, strength_str, detail_str
+        )
 
     console.print(table)
 
 
 # --- backtest command ---
 
+
 @app.command()
 def backtest(
     ticker: str = typer.Argument(..., help="Ticker symbol to backtest"),
-    strategy: str = typer.Option(..., "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal"),
+    strategy: str = typer.Option(
+        ..., "--strategy", help="Strategy: squeeze, bounce, trend, bb_rsi_reversal"
+    ),
     start: str = typer.Option(..., "--start", help="Start date (YYYY-MM-DD)"),
     end: str = typer.Option(..., "--end", help="End date (YYYY-MM-DD)"),
-    capital: float = typer.Option(10000.0, "--capital", help="Initial capital (default $10,000)"),
+    capital: float = typer.Option(
+        10000.0, "--capital", help="Initial capital (default $10,000)"
+    ),
     period: str = typer.Option("1D", "--period", help="Bar timeframe: 1D, 1H, 15Min"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Run a Bollinger Band strategy backtest on a ticker."""
     valid_strategies = ("squeeze", "bounce", "trend", "bb_rsi_reversal")
     if strategy not in valid_strategies:
-        console.print(f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}")
+        console.print(
+            f"[red]Invalid strategy.[/red] Choose from: {', '.join(valid_strategies)}"
+        )
         raise typer.Exit(1)
 
     # Validate dates
@@ -802,15 +945,18 @@ def backtest(
 
     if json_output:
         import dataclasses
+
         _print_json(dataclasses.asdict(result))
         return
 
     # Human-readable output
-    console.print(Panel(
-        f"[bold]{ticker.upper()}[/bold] — {strategy.upper()} strategy\n"
-        f"{start} → {end}  |  {result.num_trades} trades",
-        title="Backtest Result",
-    ))
+    console.print(
+        Panel(
+            f"[bold]{ticker.upper()}[/bold] — {strategy.upper()} strategy\n"
+            f"{start} → {end}  |  {result.num_trades} trades",
+            title="Backtest Result",
+        )
+    )
 
     summary = Table(show_header=False, box=None)
     summary.add_column("Metric", style="dim", width=22)
@@ -819,15 +965,25 @@ def backtest(
     summary.add_row("Initial Capital", f"${result.initial_capital:,.2f}")
     summary.add_row("Final Capital", f"${result.final_capital:,.2f}")
     rtn_color = "green" if result.total_return >= 0 else "red"
-    summary.add_row("Total Return", f"[{rtn_color}]{result.total_return:+.2f}%[/{rtn_color}]")
+    summary.add_row(
+        "Total Return", f"[{rtn_color}]{result.total_return:+.2f}%[/{rtn_color}]"
+    )
     summary.add_row("Win Rate", f"{result.win_rate*100:.1f}%")
     summary.add_row("Sharpe Ratio", f"{result.sharpe:.3f}")
-    dd_color = "red" if result.max_drawdown < -5 else "yellow" if result.max_drawdown < 0 else "green"
-    summary.add_row("Max Drawdown", f"[{dd_color}]{result.max_drawdown:.2f}%[/{dd_color}]")
+    dd_color = (
+        "red"
+        if result.max_drawdown < -5
+        else "yellow"
+        if result.max_drawdown < 0
+        else "green"
+    )
+    summary.add_row(
+        "Max Drawdown", f"[{dd_color}]{result.max_drawdown:.2f}%[/{dd_color}]"
+    )
     console.print(summary)
 
     if result.trades:
-        console.print(f"\n[dim]Last 5 trades:[/dim]")
+        console.print("\n[dim]Last 5 trades:[/dim]")
         trade_table = Table()
         trade_table.add_column("Entry Date", style="dim")
         trade_table.add_column("Exit Date", style="dim")
@@ -841,7 +997,9 @@ def backtest(
             trade_table.add_row(
                 t.entry_date[:10],
                 t.exit_date[:10],
-                f"[green]{t.direction}[/green]" if t.direction == "long" else f"[red]{t.direction}[/red]",
+                f"[green]{t.direction}[/green]"
+                if t.direction == "long"
+                else f"[red]{t.direction}[/red]",
                 f"${t.entry_price:.2f}",
                 f"${t.exit_price:.2f}",
                 f"[{pnl_color}]{t.pnl_pct:+.2f}%[/{pnl_color}]",
@@ -857,14 +1015,18 @@ app.add_typer(alert_app, name="alert")
 
 @alert_app.command("list")
 def alert_list(
-    status: Optional[str] = typer.Option(None, "--status", help="Filter: active, triggered, dismissed"),
+    status: Optional[str] = typer.Option(
+        None, "--status", help="Filter: active, triggered, dismissed"
+    ),
     alert_type: Optional[str] = typer.Option(None, "--type", help="Filter by type"),
     symbol: Optional[str] = typer.Option(None, "--symbol", help="Filter by symbol"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """List alerts."""
     asyncio.run(db.init_db())
-    items = asyncio.run(db.alerts_list(status=status, alert_type=alert_type, symbol=symbol))
+    items = asyncio.run(
+        db.alerts_list(status=status, alert_type=alert_type, symbol=symbol)
+    )
 
     if json_output:
         _print_json(items)
@@ -885,11 +1047,15 @@ def alert_list(
 
     for item in items:
         condition = item.get("condition", {})
-        cond_str = ", ".join(f"{k}={v}" for k, v in condition.items()) if condition else "—"
+        cond_str = (
+            ", ".join(f"{k}={v}" for k, v in condition.items()) if condition else "—"
+        )
         status_val = item.get("status", "—")
         status_styled = (
-            f"[green]{status_val}[/green]" if status_val == "active"
-            else f"[yellow]{status_val}[/yellow]" if status_val == "triggered"
+            f"[green]{status_val}[/green]"
+            if status_val == "active"
+            else f"[yellow]{status_val}[/yellow]"
+            if status_val == "triggered"
             else f"[dim]{status_val}[/dim]"
         )
         table.add_row(
@@ -907,19 +1073,33 @@ def alert_list(
 
 @alert_app.command("add")
 def alert_add_cmd(
-    alert_type: str = typer.Argument(..., help="Alert type: pnl, expiry, price, squeeze, signal, fill"),
+    alert_type: str = typer.Argument(
+        ..., help="Alert type: pnl, expiry, price, squeeze, signal, fill"
+    ),
     symbol: str = typer.Argument(..., help="Ticker symbol"),
-    threshold: Optional[float] = typer.Option(None, "--threshold", help="P&L threshold % (for pnl type)"),
-    days: Optional[int] = typer.Option(None, "--days", help="Days to expiry (for expiry type)"),
-    target: Optional[float] = typer.Option(None, "--target", help="Price target (for price type)"),
-    direction: str = typer.Option("above", "--direction", help="Price direction: above, below"),
-    strategy: str = typer.Option("bounce", "--strategy", help="Strategy for signal type: bounce, trend"),
+    threshold: Optional[float] = typer.Option(
+        None, "--threshold", help="P&L threshold % (for pnl type)"
+    ),
+    days: Optional[int] = typer.Option(
+        None, "--days", help="Days to expiry (for expiry type)"
+    ),
+    target: Optional[float] = typer.Option(
+        None, "--target", help="Price target (for price type)"
+    ),
+    direction: str = typer.Option(
+        "above", "--direction", help="Price direction: above, below"
+    ),
+    strategy: str = typer.Option(
+        "bounce", "--strategy", help="Strategy for signal type: bounce, trend"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Add an alert. Types: pnl, expiry, price, squeeze, signal, fill."""
     valid_types = ("pnl", "expiry", "price", "squeeze", "signal", "fill")
     if alert_type not in valid_types:
-        console.print(f"[red]Invalid alert type.[/red] Choose from: {', '.join(valid_types)}")
+        console.print(
+            f"[red]Invalid alert type.[/red] Choose from: {', '.join(valid_types)}"
+        )
         raise typer.Exit(1)
 
     condition: dict = {}
@@ -943,14 +1123,23 @@ def alert_add_cmd(
     asyncio.run(db.init_db())
     alert_id = asyncio.run(db.alerts_add(alert_type, symbol.upper(), condition))
 
-    result = {"id": alert_id, "alert_type": alert_type, "symbol": symbol.upper(), "condition": condition}
+    result = {
+        "id": alert_id,
+        "alert_type": alert_type,
+        "symbol": symbol.upper(),
+        "condition": condition,
+    }
     if json_output:
         _print_json(result)
         return
 
-    console.print(f"[green]Alert #{alert_id} created:[/green] {alert_type} on {symbol.upper()}")
+    console.print(
+        f"[green]Alert #{alert_id} created:[/green] {alert_type} on {symbol.upper()}"
+    )
     if condition:
-        console.print(f"  Condition: {', '.join(f'{k}={v}' for k, v in condition.items())}")
+        console.print(
+            f"  Condition: {', '.join(f'{k}={v}' for k, v in condition.items())}"
+        )
 
 
 @alert_app.command("dismiss")
@@ -1005,8 +1194,12 @@ def alert_check(
 @alert_app.command("send-test")
 def alert_send_test(
     symbol: str = typer.Option("AAPL", "--symbol", help="Symbol for the test alert"),
-    alert_type: str = typer.Option("price", "--type", help="Alert type for the test alert"),
-    severity: str = typer.Option("info", "--severity", help="Severity: info, warning, critical"),
+    alert_type: str = typer.Option(
+        "price", "--type", help="Alert type for the test alert"
+    ),
+    severity: str = typer.Option(
+        "info", "--severity", help="Severity: info, warning, critical"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Queue a test alert to verify the delivery pipeline."""
@@ -1033,7 +1226,9 @@ def alert_send_test(
 
     delivery = TelegramDeliveryQueue()
     queue_id = delivery.queue_alert(test_alert, context=context, severity=severity)
-    formatted = format_alert_telegram({**test_alert, "context": context, "severity": severity})
+    formatted = format_alert_telegram(
+        {**test_alert, "context": context, "severity": severity}
+    )
 
     result = {"queue_id": queue_id, "text": formatted}
     if json_output:
@@ -1077,11 +1272,15 @@ def alert_queue_cmd(
     for entry in queue:
         queue_id_short = str(entry.get("queue_id", ""))[:8]
         delivered = entry.get("delivered", False)
-        delivered_str = "[green]yes[/green]" if delivered else "[yellow]pending[/yellow]"
+        delivered_str = (
+            "[green]yes[/green]" if delivered else "[yellow]pending[/yellow]"
+        )
         severity = entry.get("severity", "info")
         sev_styled = (
-            f"[red]{severity}[/red]" if severity == "critical"
-            else f"[yellow]{severity}[/yellow]" if severity == "warning"
+            f"[red]{severity}[/red]"
+            if severity == "critical"
+            else f"[yellow]{severity}[/yellow]"
+            if severity == "warning"
             else f"[dim]{severity}[/dim]"
         )
         table.add_row(
@@ -1124,11 +1323,13 @@ def monitor_run(
         _print_json(results)
         return
 
-    console.print(Panel(
-        f"Scanned [cyan]{results['symbols_scanned']}[/cyan] symbols\n"
-        f"Started: {results['started_at'][:19]}  Completed: {results['completed_at'][:19]}",
-        title="Monitor Run",
-    ))
+    console.print(
+        Panel(
+            f"Scanned [cyan]{results['symbols_scanned']}[/cyan] symbols\n"
+            f"Started: {results['started_at'][:19]}  Completed: {results['completed_at'][:19]}",
+            title="Monitor Run",
+        )
+    )
     console.print(results.get("summary", ""))
 
 
@@ -1163,14 +1364,18 @@ def monitor_status(
 
 # --- serve command ---
 
+
 @app.command()
 def serve(
     host: str = typer.Option("0.0.0.0", "--host", help="Host to bind"),
     port: int = typer.Option(8080, "--port", help="Port to listen on"),
-    reload: bool = typer.Option(False, "--reload", help="Enable auto-reload (dev mode)"),
+    reload: bool = typer.Option(
+        False, "--reload", help="Enable auto-reload (dev mode)"
+    ),
 ):
     """Start the FastAPI server."""
     import uvicorn
+
     console.print(f"Starting alpaca-trader API on [cyan]http://{host}:{port}[/cyan]")
     uvicorn.run(
         "alpaca_trader.api.app:app",
@@ -1192,6 +1397,7 @@ def auto_status(
 ):
     """Show auto-trading engine state (enabled, mode, circuit breaker, trades today, journal stats)."""
     from alpaca_trader.engine.auto_trader import AutoTrader
+
     asyncio.run(db.init_db())
     trader = AutoTrader()
     result = asyncio.run(trader.status())
@@ -1260,6 +1466,7 @@ def auto_enable(
 ):
     """Enable auto-trading."""
     from alpaca_trader.engine.auto_trader import AutoTrader
+
     asyncio.run(db.init_db())
     trader = AutoTrader()
     asyncio.run(trader.enable())
@@ -1276,6 +1483,7 @@ def auto_disable(
 ):
     """Disable auto-trading."""
     from alpaca_trader.engine.auto_trader import AutoTrader
+
     asyncio.run(db.init_db())
     trader = AutoTrader()
     asyncio.run(trader.disable())
@@ -1289,7 +1497,9 @@ def auto_disable(
 @auto_app.command("run")
 def auto_run(
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
-    live: bool = typer.Option(False, "--live", help="Run in live mode (disable dry-run paper trading)"),
+    live: bool = typer.Option(
+        False, "--live", help="Run in live mode (disable dry-run paper trading)"
+    ),
 ):
     """Run one auto-trade cycle (paper trading by default; use --live for real orders).
 
@@ -1300,9 +1510,11 @@ def auto_run(
 
     if trading_mode == "options":
         from alpaca_trader.engine.options_trader import OptionsTrader
+
         trader = OptionsTrader(dry_run=not live)
     else:
         from alpaca_trader.engine.auto_trader import AutoTrader
+
         trader = AutoTrader(dry_run=not live)
 
     try:
@@ -1316,14 +1528,16 @@ def auto_run(
         return
 
     mode_label = trading_mode.upper()
-    console.print(Panel(
-        f"Mode: [cyan]{mode_label}[/cyan]  |  "
-        f"Market open: {'[green]yes[/green]' if summary['market_open'] else '[dim]no[/dim]'}  |  "
-        f"Enabled: {'[green]yes[/green]' if summary['enabled'] else '[red]no[/red]'}\n"
-        f"Exits checked: {summary['exits_checked']}  executed: {summary['exits_executed']}\n"
-        f"Signals found: {summary['signals_found']}  entries: {summary['entries_executed']}",
-        title=f"Auto-Trade Cycle — {summary['cycle_time'][:19]}",
-    ))
+    console.print(
+        Panel(
+            f"Mode: [cyan]{mode_label}[/cyan]  |  "
+            f"Market open: {'[green]yes[/green]' if summary['market_open'] else '[dim]no[/dim]'}  |  "
+            f"Enabled: {'[green]yes[/green]' if summary['enabled'] else '[red]no[/red]'}\n"
+            f"Exits checked: {summary['exits_checked']}  executed: {summary['exits_executed']}\n"
+            f"Signals found: {summary['signals_found']}  entries: {summary['entries_executed']}",
+            title=f"Auto-Trade Cycle — {summary['cycle_time'][:19]}",
+        )
+    )
     if summary.get("errors"):
         console.print("[red]Errors:[/red]")
         for err in summary["errors"]:
@@ -1339,15 +1553,20 @@ app.add_typer(journal_app, name="journal")
 @journal_app.command("list")
 def journal_list(
     limit: int = typer.Option(50, "--limit", help="Number of trades to show"),
-    strategy: Optional[str] = typer.Option(None, "--strategy", help="Filter by strategy"),
+    strategy: Optional[str] = typer.Option(
+        None, "--strategy", help="Filter by strategy"
+    ),
     status: Optional[str] = typer.Option(None, "--status", help="Filter: open, closed"),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Show recent trades from the journal."""
     from alpaca_trader.engine.trade_journal import TradeJournal
+
     asyncio.run(db.init_db())
     journal = TradeJournal()
-    trades = asyncio.run(journal.get_trades(limit=limit, strategy=strategy, status=status))
+    trades = asyncio.run(
+        journal.get_trades(limit=limit, strategy=strategy, status=status)
+    )
 
     if json_output:
         _print_json(trades)
@@ -1374,7 +1593,11 @@ def journal_list(
         pnl = t.get("pnl")
         pnl_pct = t.get("pnl_pct")
         status_val = t.get("status", "open")
-        status_str = "[green]closed[/green]" if status_val == "closed" else "[yellow]open[/yellow]"
+        status_str = (
+            "[green]closed[/green]"
+            if status_val == "closed"
+            else "[yellow]open[/yellow]"
+        )
         side_str = "[green]buy[/green]" if t.get("side") == "buy" else "[red]sell[/red]"
         table.add_row(
             str(t.get("id", "—")),
@@ -1399,6 +1622,7 @@ def journal_stats(
 ):
     """Show trade journal statistics: win rate, P&L, trade count."""
     from alpaca_trader.engine.trade_journal import TradeJournal
+
     asyncio.run(db.init_db())
     journal = TradeJournal()
     stats = asyncio.run(journal.get_stats())

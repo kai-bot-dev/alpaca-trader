@@ -13,9 +13,13 @@ router = APIRouter()
 @router.get("/chain/{underlying_symbol}")
 async def get_options_chain(
     underlying_symbol: str,
-    expiry: Optional[date] = Query(None, description="Exact expiration date (YYYY-MM-DD)"),
+    expiry: Optional[date] = Query(
+        None, description="Exact expiration date (YYYY-MM-DD)"
+    ),
     expiry_gte: Optional[date] = Query(None, description="Expiration date on or after"),
-    expiry_lte: Optional[date] = Query(None, description="Expiration date on or before"),
+    expiry_lte: Optional[date] = Query(
+        None, description="Expiration date on or before"
+    ),
     option_type: Optional[str] = Query(None, description="call or put"),
     strike_min: Optional[float] = Query(None, description="Minimum strike price"),
     strike_max: Optional[float] = Query(None, description="Maximum strike price"),
@@ -81,7 +85,9 @@ async def build_option_symbol(
 ):
     """Build an OCC option symbol from components."""
     if option_type.lower() not in ("call", "put"):
-        raise HTTPException(status_code=400, detail="option_type must be 'call' or 'put'")
+        raise HTTPException(
+            status_code=400, detail="option_type must be 'call' or 'put'"
+        )
     symbol = alpaca.build_option_symbol(
         underlying=underlying,
         expiry=expiry,

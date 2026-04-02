@@ -3,7 +3,6 @@
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
 
 from alpaca_trader.core import client as alpaca
 from alpaca_trader.core.models import PlaceOptionOrderRequest

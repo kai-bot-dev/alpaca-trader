@@ -1,6 +1,5 @@
 """Unit tests for engine.strike_selector module."""
 
-import pytest
 from datetime import date, timedelta
 
 from alpaca_trader.engine.strike_selector import StrikeSelector
@@ -22,7 +21,6 @@ def make_contract(
     open_interest: int = 50,
     strike: float = 275.0,
 ) -> dict:
-    mid = (bid + ask) / 2.0
     return {
         "symbol": symbol,
         "type": option_type,
@@ -66,7 +64,7 @@ class TestTypeFilter:
 class TestDTEFilter:
     def test_contract_outside_dte_range_filtered(self):
         chain = [
-            make_contract(expiry_days=3),   # too close
+            make_contract(expiry_days=3),  # too close
             make_contract(expiry_days=20),  # too far
         ]
         sel = StrikeSelector()
@@ -118,7 +116,9 @@ class TestOIFilter:
         # OI=0 allowed but scores low; test removed threshold (MIN_OI relaxed to 1)
         # With OI=0 and zero spread/good delta it still passes - skip this scenario
         # Use a contract that fails for another reason to confirm filtering still works
-        chain = [make_contract(open_interest=0, bid=0.0, ask=0.0)]  # no price -> filtered
+        chain = [
+            make_contract(open_interest=0, bid=0.0, ask=0.0)
+        ]  # no price -> filtered
         sel = StrikeSelector()
         result = sel.select_contract("X", "long", chain)
         assert result is None
@@ -165,8 +165,17 @@ class TestThetaBurnFilter:
 class TestScoring:
     def test_returns_best_scoring_contract(self):
         # ideal: delta=0.45, low theta, high OI, tight spread
-        ideal = make_contract(symbol="IDEAL", delta=0.45, open_interest=200, bid=2.90, ask=3.00, theta=-0.02)
-        poor = make_contract(symbol="POOR", delta=0.32, open_interest=12, bid=2.00, ask=2.60, theta=-0.04)
+        ideal = make_contract(
+            symbol="IDEAL",
+            delta=0.45,
+            open_interest=200,
+            bid=2.90,
+            ask=3.00,
+            theta=-0.02,
+        )
+        poor = make_contract(
+            symbol="POOR", delta=0.32, open_interest=12, bid=2.00, ask=2.60, theta=-0.04
+        )
         sel = StrikeSelector()
         result = sel.select_contract("X", "long", [ideal, poor])
         assert result is not None
@@ -214,7 +223,18 @@ class TestReturnDict:
         sel = StrikeSelector()
         result = sel.select_contract("X", "long", chain)
         assert result is not None
-        for key in ("symbol", "strike", "expiry", "delta", "theta", "iv", "bid", "ask", "score", "contracts_to_buy"):
+        for key in (
+            "symbol",
+            "strike",
+            "expiry",
+            "delta",
+            "theta",
+            "iv",
+            "bid",
+            "ask",
+            "score",
+            "contracts_to_buy",
+        ):
             assert key in result, f"Missing key: {key}"
 
     def test_empty_chain_returns_none(self):

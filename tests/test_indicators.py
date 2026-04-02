@@ -21,13 +21,15 @@ def _make_ohlcv(n: int = 60, trend: float = 0.5) -> pd.DataFrame:
     low = close - np.abs(np.random.randn(n)) * 0.5
     open_ = close - np.random.randn(n) * 0.3
     volume = 1_000_000 + np.random.randint(0, 500_000, n)
-    return pd.DataFrame({
-        "open": open_,
-        "high": high,
-        "low": low,
-        "close": close,
-        "volume": volume.astype(float),
-    })
+    return pd.DataFrame(
+        {
+            "open": open_,
+            "high": high,
+            "low": low,
+            "close": close,
+            "volume": volume.astype(float),
+        }
+    )
 
 
 class TestCalcRSI:
@@ -150,16 +152,20 @@ class TestCalcATR:
 
     def test_high_volatility_gives_larger_atr(self):
         n = 60
-        low_vol = pd.DataFrame({
-            "high": [100 + 0.5] * n,
-            "low": [100 - 0.5] * n,
-            "close": [100.0] * n,
-        })
-        high_vol = pd.DataFrame({
-            "high": [100 + 5.0] * n,
-            "low": [100 - 5.0] * n,
-            "close": [100.0] * n,
-        })
+        low_vol = pd.DataFrame(
+            {
+                "high": [100 + 0.5] * n,
+                "low": [100 - 0.5] * n,
+                "close": [100.0] * n,
+            }
+        )
+        high_vol = pd.DataFrame(
+            {
+                "high": [100 + 5.0] * n,
+                "low": [100 - 5.0] * n,
+                "close": [100.0] * n,
+            }
+        )
         atr_low = calc_atr(low_vol).dropna().iloc[-1]
         atr_high = calc_atr(high_vol).dropna().iloc[-1]
         assert atr_high > atr_low

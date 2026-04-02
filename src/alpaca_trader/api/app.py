@@ -1,6 +1,5 @@
 """FastAPI application for alpaca-trader."""
 
-import os
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -60,7 +59,9 @@ async def health():
 # Serve built React frontend at /
 _FRONTEND_DIR = Path(__file__).parent.parent.parent.parent / "dist" / "frontend"
 if _FRONTEND_DIR.exists():
-    app.mount("/assets", StaticFiles(directory=str(_FRONTEND_DIR / "assets")), name="assets")
+    app.mount(
+        "/assets", StaticFiles(directory=str(_FRONTEND_DIR / "assets")), name="assets"
+    )
 
     @app.get("/", include_in_schema=False)
     @app.get("/{path:path}", include_in_schema=False)

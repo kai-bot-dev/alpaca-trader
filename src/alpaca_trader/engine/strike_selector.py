@@ -12,7 +12,6 @@ from __future__ import annotations
 import logging
 import math
 from datetime import date, timedelta
-from typing import Optional, Union
 
 logger = logging.getLogger(__name__)
 
@@ -62,6 +61,7 @@ def _estimate_delta(option_type, stock_price, strike):
 def _get_current_price(underlying):
     try:
         from alpaca_trader.core import client as alpaca
+
         bars = alpaca.get_stock_bars(underlying, period="1D", limit=2)
         if bars:
             return float(bars[-1]["close"])
@@ -72,6 +72,7 @@ def _get_current_price(underlying):
 
 def _fetch_chain(underlying, direction, stock_price):
     from alpaca_trader.core import client as alpaca
+
     option_type = "call" if direction == "long" else "put"
     today = date.today()
     exp_gte = today + timedelta(days=4)
@@ -95,7 +96,9 @@ def _fetch_chain(underlying, direction, stock_price):
         if chain:
             return chain
     except Exception as e:
-        logger.warning("StrikeSelector: narrow chain fetch failed for %s: %s", underlying, e)
+        logger.warning(
+            "StrikeSelector: narrow chain fetch failed for %s: %s", underlying, e
+        )
     logger.info("StrikeSelector: trying wider expiry window for %s", underlying)
     exp_gte = today + timedelta(days=3)
     exp_lte = today + timedelta(days=14)
@@ -111,7 +114,9 @@ def _fetch_chain(underlying, direction, stock_price):
         )
         return chain or []
     except Exception as e:
-        logger.warning("StrikeSelector: wide chain fetch failed for %s: %s", underlying, e)
+        logger.warning(
+            "StrikeSelector: wide chain fetch failed for %s: %s", underlying, e
+        )
         return []
 
 
@@ -124,9 +129,15 @@ class StrikeSelector:
             portfolio_value = float(chain_or_budget)
             stock_price = _get_current_price(underlying)
             if stock_price is None:
-                logger.warning("StrikeSelector: cannot get price for %s, aborting", underlying)
+                logger.warning(
+                    "StrikeSelector: cannot get price for %s, aborting", underlying
+                )
                 return None
-            logger.info("StrikeSelector: %s price=%.2f, fetching near-money chain", underlying, stock_price)
+            logger.info(
+                "StrikeSelector: %s price=%.2f, fetching near-money chain",
+                underlying,
+                stock_price,
+            )
             chain_data = _fetch_chain(underlying, direction, stock_price)
         else:
             portfolio_value = self.portfolio_value
@@ -143,7 +154,9 @@ class StrikeSelector:
             if contract_type not in ("call", "put"):
                 if len(sym) >= 15:
                     cp_char = sym[-9] if len(sym) >= 9 else ""
-                    contract_type = "call" if cp_char == "C" else "put" if cp_char == "P" else ""
+                    contract_type = (
+                        "call" if cp_char == "C" else "put" if cp_char == "P" else ""
+                    )
             if contract_type != option_type:
                 continue
 
@@ -195,7 +208,12 @@ class StrikeSelector:
 
             last_price = None
             try:
-                last_price = float(contract.get("last_price") or contract.get("close_price") or 0) or None
+                last_price = (
+                    float(
+                        contract.get("last_price") or contract.get("close_price") or 0
+                    )
+                    or None
+                )
             except (TypeError, ValueError):
                 pass
 
@@ -225,41 +243,58 @@ class StrikeSelector:
 
             max_delta_dev = max(_IDEAL_DELTA - _MIN_DELTA, _MAX_DELTA - _IDEAL_DELTA)
             delta_score = max(0.0, 1.0 - abs(abs_delta - _IDEAL_DELTA) / max_delta_dev)
-            theta_score = max(0.0, 1.0 - theta_burn / _MAX_THETA_BURN) if theta_burn > 0 else 1.0
+            theta_score = (
+                max(0.0, 1.0 - theta_burn / _MAX_THETA_BURN) if theta_burn > 0 else 1.0
+            )
             oi_score = min(1.0, oi / 100.0)
             spread_score = max(0.0, 1.0 - spread_pct / _MAX_SPREAD_PCT)
-            score = _W_DELTA * delta_score + _W_THETA * theta_score + _W_OI * oi_score + _W_SPREAD * spread_score
+            score = (
+                _W_DELTA * delta_score
+                + _W_THETA * theta_score
+                + _W_OI * oi_score
+                + _W_SPREAD * spread_score
+            )
 
             max_premium = portfolio_value * 0.02
             contracts_to_buy = math.floor(max_premium / (ask * 100))
-            contracts_to_buy = max(_MIN_CONTRACTS, min(_MAX_CONTRACTS, contracts_to_buy))
+            contracts_to_buy = max(
+                _MIN_CONTRACTS, min(_MAX_CONTRACTS, contracts_to_buy)
+            )
 
-            candidates.append({
-                "symbol": sym,
-                "strike": strike,
-                "expiry": expiry.isoformat(),
-                "delta": round(delta, 4),
-                "theta": round(theta, 6),
-                "iv": float(iv) if iv is not None else None,
-                "bid": round(bid, 4),
-                "ask": round(ask, 4),
-                "last_price": last_price,
-                "score": round(score, 4),
-                "contracts": contracts_to_buy,
-                "contracts_to_buy": contracts_to_buy,
-                "dte": days,
-            })
+            candidates.append(
+                {
+                    "symbol": sym,
+                    "strike": strike,
+                    "expiry": expiry.isoformat(),
+                    "delta": round(delta, 4),
+                    "theta": round(theta, 6),
+                    "iv": float(iv) if iv is not None else None,
+                    "bid": round(bid, 4),
+                    "ask": round(ask, 4),
+                    "last_price": last_price,
+                    "score": round(score, 4),
+                    "contracts": contracts_to_buy,
+                    "contracts_to_buy": contracts_to_buy,
+                    "dte": days,
+                }
+            )
 
         if not candidates:
             logger.info(
                 "StrikeSelector: no candidates for %s %s after filtering %d contracts",
-                underlying, direction, len(chain_data),
+                underlying,
+                direction,
+                len(chain_data),
             )
             return None
 
         best = max(candidates, key=lambda c: c["score"])
         logger.info(
             "StrikeSelector: selected %s score=%.3f delta=%.2f dte=%d ask=%.2f",
-            best["symbol"], best["score"], best["delta"], best["dte"], best["ask"],
+            best["symbol"],
+            best["score"],
+            best["delta"],
+            best["dte"],
+            best["ask"],
         )
         return best

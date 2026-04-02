@@ -8,7 +8,7 @@ from typing import Optional
 from zoneinfo import ZoneInfo
 
 from alpaca_trader.core import database as db
-from alpaca_trader.engine.risk_manager import RiskManager, RiskConfig
+from alpaca_trader.engine.risk_manager import RiskManager
 from alpaca_trader.engine.order_executor import OrderExecutor, ExecutorConfig
 from alpaca_trader.engine.position_manager import PositionManager
 from alpaca_trader.engine.trade_journal import TradeJournal
@@ -141,17 +141,22 @@ class AutoTrader:
             logger.info("AutoTrader: cycle skipped — market closed")
             return summary
         if self.risk_manager.is_circuit_broken:
-            summary["errors"].append(f"Circuit breaker tripped: {self.risk_manager._circuit_broken_reason}")
+            summary["errors"].append(
+                f"Circuit breaker tripped: {self.risk_manager._circuit_broken_reason}"
+            )
             logger.warning("AutoTrader: cycle skipped — circuit breaker tripped")
             return summary
 
         # Step 2: Get account info
         try:
             from alpaca_trader.core import client as alpaca
+
             account = alpaca.get_account()
             portfolio_value = float(account.get("portfolio_value") or 0)
             cash = float(account.get("cash") or 0)
-            daily_pnl = float(account.get("equity", portfolio_value) or 0) - portfolio_value
+            daily_pnl = (
+                float(account.get("equity", portfolio_value) or 0) - portfolio_value
+            )
         except Exception as e:
             summary["errors"].append(f"Account fetch failed: {e}")
             logger.error("AutoTrader: account fetch failed: %s", e)
@@ -160,6 +165,7 @@ class AutoTrader:
         # Step 3 & 4: Check open positions for exits
         try:
             from alpaca_trader.core import client as alpaca
+
             positions = alpaca.get_positions()
         except Exception as e:
             summary["errors"].append(f"Positions fetch failed: {e}")
@@ -167,7 +173,9 @@ class AutoTrader:
             positions = []
 
         open_journal = await self.trade_journal.get_trades(status="open", limit=200)
-        exits = self.position_manager.check_exits(positions, journal_entries=open_journal)
+        exits = self.position_manager.check_exits(
+            positions, journal_entries=open_journal
+        )
         summary["exits_checked"] = len(positions)
 
         for exit_pos in exits:
@@ -185,14 +193,20 @@ class AutoTrader:
                     summary["exits_executed"] += 1
                     self._trades_today += 1
                     # Close open journal trade
-                    open_trade = await self.trade_journal.get_open_trade_for_symbol(symbol)
+                    open_trade = await self.trade_journal.get_open_trade_for_symbol(
+                        symbol
+                    )
                     if open_trade:
                         await self.trade_journal.log_exit(
                             open_trade["id"], current_price, exit_reason
                         )
-                    logger.info("Exit executed: %s qty=%d reason=%s", symbol, qty, exit_reason)
+                    logger.info(
+                        "Exit executed: %s qty=%d reason=%s", symbol, qty, exit_reason
+                    )
                 else:
-                    summary["errors"].append(f"Exit order failed for {symbol}: {result.error}")
+                    summary["errors"].append(
+                        f"Exit order failed for {symbol}: {result.error}"
+                    )
             except Exception as e:
                 summary["errors"].append(f"Exit error for {symbol}: {e}")
                 logger.error("AutoTrader: exit error for %s: %s", symbol, e)
@@ -213,7 +227,9 @@ class AutoTrader:
         best_by_symbol: dict[str, object] = {}
         for strategy in ("bb_rsi_reversal", "bounce", "squeeze"):
             try:
-                strat_signals = self.scanner.scan(symbols, strategy=strategy, period="1D")
+                strat_signals = self.scanner.scan(
+                    symbols, strategy=strategy, period="1D"
+                )
                 for s in strat_signals:
                     if s.detected:
                         existing = best_by_symbol.get(s.symbol)
@@ -226,7 +242,9 @@ class AutoTrader:
         # Also scan intraday (15Min) for bb_rsi_reversal and bounce
         for strategy in ("bb_rsi_reversal", "bounce"):
             try:
-                intraday = self.scanner.scan(symbols, strategy=strategy, period="15Min", limit=100)
+                intraday = self.scanner.scan(
+                    symbols, strategy=strategy, period="15Min", limit=100
+                )
                 for s in intraday:
                     if s.detected:
                         existing = best_by_symbol.get(s.symbol)
@@ -234,7 +252,9 @@ class AutoTrader:
                             best_by_symbol[s.symbol] = s
             except Exception as e:
                 summary["errors"].append(f"Intraday scanner failed ({strategy}): {e}")
-                logger.error("AutoTrader: intraday scanner failed for %s: %s", strategy, e)
+                logger.error(
+                    "AutoTrader: intraday scanner failed for %s: %s", strategy, e
+                )
 
         actionable = list(best_by_symbol.values())
         summary["signals_found"] = len(actionable)
@@ -251,10 +271,12 @@ class AutoTrader:
 
             try:
                 # Estimate price from signal details or use a rough proxy
-                target = signal.details.get("target") or signal.details.get("target_price")
-                stop = signal.details.get("stop") or signal.details.get("stop_price")
+                # target and stop are not used yet; kept for future enhancement
+                _ = signal.details.get("target") or signal.details.get("target_price")
+                _ = signal.details.get("stop") or signal.details.get("stop_price")
                 # Get current price via bars
                 from alpaca_trader.core import client as alpaca
+
                 bars = alpaca.get_stock_bars_df(symbol, period="1D", limit=2)
                 if bars.empty:
                     continue
@@ -285,7 +307,9 @@ class AutoTrader:
                 approved_qty = risk_result.adjusted_qty
 
                 # Execute entry
-                order_result = self.order_executor.place_market_order(symbol, approved_qty, "buy")
+                order_result = self.order_executor.place_market_order(
+                    symbol, approved_qty, "buy"
+                )
                 if order_result.success:
                     summary["entries_executed"] += 1
                     self._trades_today += 1
@@ -300,10 +324,15 @@ class AutoTrader:
                     )
                     logger.info(
                         "Entry executed: %s qty=%d price=%.2f trade_id=%d",
-                        symbol, approved_qty, price, trade_id,
+                        symbol,
+                        approved_qty,
+                        price,
+                        trade_id,
                     )
                 else:
-                    summary["errors"].append(f"Entry order failed for {symbol}: {order_result.error}")
+                    summary["errors"].append(
+                        f"Entry order failed for {symbol}: {order_result.error}"
+                    )
             except Exception as e:
                 summary["errors"].append(f"Entry error for {symbol}: {e}")
                 logger.error("AutoTrader: entry error for %s: %s", symbol, e)

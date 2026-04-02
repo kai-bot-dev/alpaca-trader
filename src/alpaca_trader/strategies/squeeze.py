@@ -2,7 +2,6 @@
 
 from dataclasses import dataclass
 
-import numpy as np
 import pandas as pd
 
 from alpaca_trader.strategies.bollinger import BollingerBands
@@ -11,10 +10,10 @@ from alpaca_trader.strategies.bollinger import BollingerBands
 @dataclass
 class SqueezeSignal:
     detected: bool
-    width: float          # Current BB width (relative to price)
+    width: float  # Current BB width (relative to price)
     candle_outside: bool  # Most recent close is outside a band
-    direction: str        # 'long', 'short', or 'none'
-    strength: float       # 0.0–1.0: how far outside the band the close is
+    direction: str  # 'long', 'short', or 'none'
+    strength: float  # 0.0–1.0: how far outside the band the close is
 
 
 class SqueezeDetector:
@@ -60,8 +59,13 @@ class SqueezeDetector:
             SqueezeSignal with detection details
         """
         if len(df) < self.bb.period + 1:
-            return SqueezeSignal(detected=False, width=0.0, candle_outside=False,
-                                 direction="none", strength=0.0)
+            return SqueezeSignal(
+                detected=False,
+                width=0.0,
+                candle_outside=False,
+                direction="none",
+                strength=0.0,
+            )
 
         enriched = self.bb.calc(df)
 
@@ -76,15 +80,25 @@ class SqueezeDetector:
         squeeze_active = width < threshold
 
         if not squeeze_active:
-            return SqueezeSignal(detected=False, width=width, candle_outside=False,
-                                 direction="none", strength=0.0)
+            return SqueezeSignal(
+                detected=False,
+                width=width,
+                candle_outside=False,
+                direction="none",
+                strength=0.0,
+            )
 
         # Check candle outside band
         candle_outside = close > upper or close < lower
 
         if not candle_outside:
-            return SqueezeSignal(detected=True, width=width, candle_outside=False,
-                                 direction="none", strength=0.0)
+            return SqueezeSignal(
+                detected=True,
+                width=width,
+                candle_outside=False,
+                direction="none",
+                strength=0.0,
+            )
 
         # Volume confirmation: current volume > 1.5x average
         if "volume" in df.columns:
@@ -95,8 +109,13 @@ class SqueezeDetector:
             volume_confirmed = True  # No volume data → skip check
 
         if not volume_confirmed:
-            return SqueezeSignal(detected=True, width=width, candle_outside=True,
-                                 direction="none", strength=0.0)
+            return SqueezeSignal(
+                detected=True,
+                width=width,
+                candle_outside=True,
+                direction="none",
+                strength=0.0,
+            )
 
         # Direction and strength
         if close > upper:

@@ -53,16 +53,35 @@ class TradeJournal:
                     contracts, delta_at_entry, theta_at_entry, iv_at_entry)
                    VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
-                    symbol.upper(), side.lower(), qty, price, strategy, details_json, entry_time,
-                    option_symbol, option_type, strike_price, expiry_date, premium_paid,
-                    contracts, delta_at_entry, theta_at_entry, iv_at_entry,
+                    symbol.upper(),
+                    side.lower(),
+                    qty,
+                    price,
+                    strategy,
+                    details_json,
+                    entry_time,
+                    option_symbol,
+                    option_type,
+                    strike_price,
+                    expiry_date,
+                    premium_paid,
+                    contracts,
+                    delta_at_entry,
+                    theta_at_entry,
+                    iv_at_entry,
                 ),
             )
             await db.commit()
             trade_id = cursor.lastrowid
         logger.info(
             "Trade entry logged",
-            extra={"trade_id": trade_id, "symbol": symbol, "side": side, "qty": qty, "price": price},
+            extra={
+                "trade_id": trade_id,
+                "symbol": symbol,
+                "side": side,
+                "qty": qty,
+                "price": price,
+            },
         )
         return trade_id
 
@@ -72,11 +91,14 @@ class TradeJournal:
         async with aiosqlite.connect(self._db_url) as db:
             db.row_factory = aiosqlite.Row
             cursor = await db.execute(
-                "SELECT * FROM trade_journal WHERE id = ? AND status = 'open'", (trade_id,)
+                "SELECT * FROM trade_journal WHERE id = ? AND status = 'open'",
+                (trade_id,),
             )
             row = await cursor.fetchone()
             if row is None:
-                logger.warning("log_exit: trade %d not found or already closed", trade_id)
+                logger.warning(
+                    "log_exit: trade %d not found or already closed", trade_id
+                )
                 return
 
             entry_price = row["entry_price"]
@@ -99,7 +121,12 @@ class TradeJournal:
             await db.commit()
         logger.info(
             "Trade exit logged",
-            extra={"trade_id": trade_id, "exit_price": price, "reason": reason, "pnl": pnl},
+            extra={
+                "trade_id": trade_id,
+                "exit_price": price,
+                "reason": reason,
+                "pnl": pnl,
+            },
         )
 
     async def get_trades(

@@ -20,7 +20,7 @@ def _dte_from_expiry(expiry_str: str) -> Optional[int]:
 
 def _parse_underlying(option_symbol: str) -> str:
     """Extract underlying ticker from OCC option symbol. E.g. AAPL260410C00255000 -> AAPL"""
-    m = re.match(r'^([A-Z]+)\d', option_symbol)
+    m = re.match(r"^([A-Z]+)\d", option_symbol)
     return m.group(1) if m else option_symbol
 
 
@@ -28,12 +28,13 @@ def _get_bb_bands(underlying: str, period: int = 20):
     try:
         from alpaca_trader.core import client as alpaca
         from alpaca_trader.strategies.bollinger import BollingerBands
-        df = alpaca.get_stock_bars_df(underlying, period='1D', limit=30)
+
+        df = alpaca.get_stock_bars_df(underlying, period="1D", limit=30)
         if df is None or len(df) < period:
             return None, None
         bb = BollingerBands(period=period)
         result = bb.calc(df)
-        return float(result['bb_middle'].iloc[-1]), float(result['bb_lower'].iloc[-1])
+        return float(result["bb_middle"].iloc[-1]), float(result["bb_lower"].iloc[-1])
     except Exception as e:
         logger.debug("BB fetch failed for %s: %s", underlying, e)
         return None, None
@@ -42,13 +43,13 @@ def _get_bb_bands(underlying: str, period: int = 20):
 def _get_current_stock_price(underlying: str) -> Optional[float]:
     try:
         from alpaca_trader.core import client as alpaca
-        bars = alpaca.get_stock_bars(underlying, period='1D', limit=2)
+
+        bars = alpaca.get_stock_bars(underlying, period="1D", limit=2)
         if bars:
-            return float(bars[-1]['close'])
+            return float(bars[-1]["close"])
     except Exception as e:
         logger.debug("Stock price fetch failed for %s: %s", underlying, e)
     return None
-
 
 
 class OptionsPositionManager:
@@ -120,10 +121,16 @@ class OptionsPositionManager:
                 bb_middle, bb_lower = _get_bb_bands(underlying)
                 # BB target exit
                 if bb_middle is not None and stock_price >= bb_middle:
-                    return True, f"bb_target_exit (price {stock_price:.2f} >= middle_bb {bb_middle:.2f})"
+                    return (
+                        True,
+                        f"bb_target_exit (price {stock_price:.2f} >= middle_bb {bb_middle:.2f})",
+                    )
                 # Underlying price stop
                 if bb_lower is not None and stock_price < bb_lower * 0.995:
-                    return True, f"underlying_stop (price {stock_price:.2f} broke below lower_bb {bb_lower:.2f})"
+                    return (
+                        True,
+                        f"underlying_stop (price {stock_price:.2f} broke below lower_bb {bb_lower:.2f})",
+                    )
 
         # Priority 3: Theta-aware window
         if theta_at_entry is not None and abs(theta_at_entry) > 0 and days_held > 0:
@@ -142,7 +149,10 @@ class OptionsPositionManager:
         if delta_at_entry is not None and current_price < premium_paid:
             estimated_delta = abs(delta_at_entry) * (current_price / premium_paid)
             if estimated_delta < self.delta_floor:
-                return True, f"delta_floor (est_delta={estimated_delta:.2f} < {self.delta_floor})"
+                return (
+                    True,
+                    f"delta_floor (est_delta={estimated_delta:.2f} < {self.delta_floor})",
+                )
 
         # Priority 5: Time stop
         if expiry_date:
@@ -188,7 +198,9 @@ class OptionsPositionManager:
             symbol = (pos.get("symbol") or "").upper()
             try:
                 current_price = float(pos.get("current_price") or 0)
-                entry_price = float(pos.get("avg_entry_price") or pos.get("avg_cost") or 0)
+                entry_price = float(
+                    pos.get("avg_entry_price") or pos.get("avg_cost") or 0
+                )
             except (TypeError, ValueError):
                 continue
 
@@ -205,7 +217,9 @@ class OptionsPositionManager:
 
             if journal_entry:
                 expiry_date = journal_entry.get("expiry_date")
-                premium_raw = journal_entry.get("premium_paid") or journal_entry.get("entry_price")
+                premium_raw = journal_entry.get("premium_paid") or journal_entry.get(
+                    "entry_price"
+                )
                 if premium_raw is not None:
                     try:
                         premium_paid = float(premium_raw)
@@ -216,12 +230,17 @@ class OptionsPositionManager:
                 if opt_type == "put":
                     direction = "short"
 
-                entry_time = journal_entry.get("entry_time") or journal_entry.get("created_at")
+                entry_time = journal_entry.get("entry_time") or journal_entry.get(
+                    "created_at"
+                )
                 if entry_time:
                     try:
                         from datetime import datetime, timezone
+
                         if isinstance(entry_time, str):
-                            entry_dt = datetime.fromisoformat(entry_time.replace("Z", "+00:00"))
+                            entry_dt = datetime.fromisoformat(
+                                entry_time.replace("Z", "+00:00")
+                            )
                         else:
                             entry_dt = entry_time
                         days_held = (datetime.now(timezone.utc) - entry_dt).days
@@ -258,7 +277,10 @@ class OptionsPositionManager:
                 exits.append(exit_pos)
                 logger.info(
                     "Options exit signal for %s: %s (price=%.2f, premium=%.2f)",
-                    symbol, reason, current_price, premium_paid,
+                    symbol,
+                    reason,
+                    current_price,
+                    premium_paid,
                 )
 
         return exits

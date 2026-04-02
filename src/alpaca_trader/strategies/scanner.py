@@ -1,17 +1,14 @@
 """Watchlist scanner — runs a strategy across all symbols in the watchlist."""
+
 import asyncio
 import concurrent.futures
 import logging
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Optional
 
-import pandas as pd
 
 from alpaca_trader.core import client as alpaca
-from alpaca_trader.core import database as db
-from alpaca_trader.strategies.bollinger import BollingerBands
 from alpaca_trader.strategies.squeeze import SqueezeDetector
 from alpaca_trader.strategies.bounce import BounceDetector
 from alpaca_trader.strategies.trend import TrendDetector
@@ -64,7 +61,14 @@ class WatchlistScanner:
         Returns:
             List of Signal objects, sorted by detected=True first
         """
-        logger.info("Starting scan", extra={"strategy": strategy, "symbol_count": len(symbols), "period": period})
+        logger.info(
+            "Starting scan",
+            extra={
+                "strategy": strategy,
+                "symbol_count": len(symbols),
+                "period": period,
+            },
+        )
         results = []
         for symbol in symbols:
             signal = self._scan_symbol(symbol, strategy, period, limit)
@@ -73,9 +77,19 @@ class WatchlistScanner:
         results.sort(key=lambda s: (not s.detected, s.symbol))
         detected = [r for r in results if r.detected]
         if detected:
-            logger.info("Scan complete", extra={"strategy": strategy, "detected": len(detected), "total": len(results)})
+            logger.info(
+                "Scan complete",
+                extra={
+                    "strategy": strategy,
+                    "detected": len(detected),
+                    "total": len(results),
+                },
+            )
         else:
-            logger.debug("Scan complete — no signals", extra={"strategy": strategy, "total": len(results)})
+            logger.debug(
+                "Scan complete — no signals",
+                extra={"strategy": strategy, "total": len(results)},
+            )
         return results
 
     async def scan_async(
@@ -101,7 +115,11 @@ class WatchlistScanner:
         """
         logger.info(
             "Starting async scan",
-            extra={"strategy": strategy, "symbol_count": len(symbols), "period": period},
+            extra={
+                "strategy": strategy,
+                "symbol_count": len(symbols),
+                "period": period,
+            },
         )
 
         semaphore = asyncio.Semaphore(self.MAX_CONCURRENCY)
@@ -112,9 +130,7 @@ class WatchlistScanner:
                     self._scan_symbol, sym, strategy, period, limit
                 )
 
-        results = await asyncio.gather(
-            *[_bounded_scan(sym) for sym in symbols]
-        )
+        results = await asyncio.gather(*[_bounded_scan(sym) for sym in symbols])
         results = list(results)
 
         # Sort: detected signals first, then alphabetical
@@ -123,7 +139,11 @@ class WatchlistScanner:
         if detected:
             logger.info(
                 "Async scan complete",
-                extra={"strategy": strategy, "detected": len(detected), "total": len(results)},
+                extra={
+                    "strategy": strategy,
+                    "detected": len(detected),
+                    "total": len(results),
+                },
             )
         else:
             logger.debug(
@@ -143,30 +163,48 @@ class WatchlistScanner:
         try:
             # Use a thread with timeout to prevent hanging on Alpaca API calls
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-                future = pool.submit(alpaca.get_stock_bars_df, symbol, period=period, limit=limit)
+                future = pool.submit(
+                    alpaca.get_stock_bars_df, symbol, period=period, limit=limit
+                )
                 df = future.result(timeout=15)  # 15 second timeout per symbol
         except concurrent.futures.TimeoutError:
-            logger.warning("Scan timeout", extra={"symbol": symbol, "strategy": strategy, "period": period})
+            logger.warning(
+                "Scan timeout",
+                extra={"symbol": symbol, "strategy": strategy, "period": period},
+            )
             return Signal(
-                symbol=symbol, strategy=strategy, detected=False,
-                direction="none", strength=0.0,
-                details={"error": f"API timeout after 15s"},
+                symbol=symbol,
+                strategy=strategy,
+                detected=False,
+                direction="none",
+                strength=0.0,
+                details={"error": "API timeout after 15s"},
                 timestamp=timestamp,
             )
         except EnvironmentError:
             raise
         except Exception as e:
-            logger.warning("Scan error", extra={"symbol": symbol, "strategy": strategy, "error": str(e)})
+            logger.warning(
+                "Scan error",
+                extra={"symbol": symbol, "strategy": strategy, "error": str(e)},
+            )
             return Signal(
-                symbol=symbol, strategy=strategy, detected=False,
-                direction="none", strength=0.0,
-                details={"error": str(e)}, timestamp=timestamp,
+                symbol=symbol,
+                strategy=strategy,
+                detected=False,
+                direction="none",
+                strength=0.0,
+                details={"error": str(e)},
+                timestamp=timestamp,
             )
 
         if df.empty or len(df) < 15:
             return Signal(
-                symbol=symbol, strategy=strategy, detected=False,
-                direction="none", strength=0.0,
+                symbol=symbol,
+                strategy=strategy,
+                detected=False,
+                direction="none",
+                strength=0.0,
                 details={"error": f"Insufficient data: {len(df)} bars"},
                 timestamp=timestamp,
             )
@@ -176,8 +214,10 @@ class WatchlistScanner:
                 detector = SqueezeDetector()
                 sig = detector.detect(df)
                 return Signal(
-                    symbol=symbol, strategy=strategy,
-                    detected=sig.detected, direction=sig.direction,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=sig.detected,
+                    direction=sig.direction,
                     strength=sig.strength,
                     details={
                         "width": round(sig.width, 4),
@@ -189,8 +229,10 @@ class WatchlistScanner:
                 detector = BounceDetector()
                 sig = detector.detect(df)
                 return Signal(
-                    symbol=symbol, strategy=strategy,
-                    detected=sig.detected, direction=sig.direction,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=sig.detected,
+                    direction=sig.direction,
                     strength=0.5 if sig.detected else 0.0,
                     details={
                         "band_touched": sig.band_touched,
@@ -203,8 +245,10 @@ class WatchlistScanner:
                 detector = TrendDetector()
                 sig = detector.detect(df)
                 return Signal(
-                    symbol=symbol, strategy=strategy,
-                    detected=sig.detected, direction=sig.direction,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=sig.detected,
+                    direction=sig.direction,
                     strength=sig.strength,
                     details={"macd_hist": round(sig.macd_hist, 4)},
                     timestamp=timestamp,
@@ -213,8 +257,10 @@ class WatchlistScanner:
                 detector = BBRSIReversalDetector()
                 sig = detector.detect(df)
                 return Signal(
-                    symbol=symbol, strategy=strategy,
-                    detected=sig.detected, direction=sig.direction,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=sig.detected,
+                    direction=sig.direction,
                     strength=sig.strength,
                     details={
                         "rsi": round(sig.rsi, 1),
@@ -230,8 +276,10 @@ class WatchlistScanner:
                 detector = MomentumDetector()
                 sig = detector.detect(df)
                 return Signal(
-                    symbol=symbol, strategy=strategy,
-                    detected=sig.detected, direction=sig.direction,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=sig.detected,
+                    direction=sig.direction,
                     strength=sig.strength,
                     details={
                         "rsi": round(sig.rsi, 1),
@@ -243,14 +291,21 @@ class WatchlistScanner:
                 )
             else:
                 return Signal(
-                    symbol=symbol, strategy=strategy, detected=False,
-                    direction="none", strength=0.0,
+                    symbol=symbol,
+                    strategy=strategy,
+                    detected=False,
+                    direction="none",
+                    strength=0.0,
                     details={"error": f"Unknown strategy: {strategy}"},
                     timestamp=timestamp,
                 )
         except Exception as e:
             return Signal(
-                symbol=symbol, strategy=strategy, detected=False,
-                direction="none", strength=0.0,
-                details={"error": str(e)}, timestamp=timestamp,
+                symbol=symbol,
+                strategy=strategy,
+                detected=False,
+                direction="none",
+                strength=0.0,
+                details={"error": str(e)},
+                timestamp=timestamp,
             )

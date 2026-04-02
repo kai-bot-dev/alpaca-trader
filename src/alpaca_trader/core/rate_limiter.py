@@ -6,7 +6,6 @@ import time
 from functools import wraps
 from typing import Any, Callable, TypeVar, Optional
 
-import requests
 from requests.exceptions import RequestException
 
 logger = logging.getLogger(__name__)
@@ -37,24 +36,26 @@ class RetryConfig:
 
     def get_backoff_ms(self, attempt: int) -> int:
         """Calculate exponential backoff in milliseconds."""
-        backoff = self.initial_backoff_ms * (self.backoff_multiplier ** attempt)
+        backoff = self.initial_backoff_ms * (self.backoff_multiplier**attempt)
         return min(int(backoff), self.max_backoff_ms)
 
 
-def with_rate_limit_retry(retry_config: Optional[RetryConfig] = None) -> Callable[[F], F]:
+def with_rate_limit_retry(
+    retry_config: Optional[RetryConfig] = None,
+) -> Callable[[F], F]:
     """Decorator that adds rate limit handling and exponential backoff retry logic.
-    
+
     Handles:
     - 429 (Too Many Requests) responses
     - 503 (Service Unavailable) responses
     - Network timeout/connection errors
-    
+
     Args:
         retry_config: RetryConfig instance. If None, uses defaults.
-    
+
     Returns:
         Decorated function with retry logic.
-    
+
     Raises:
         RateLimitError: If rate limit is exceeded after all retries.
     """
@@ -139,12 +140,12 @@ def with_async_rate_limit_retry(
     retry_config: Optional[RetryConfig] = None,
 ) -> Callable[[F], F]:
     """Async version of with_rate_limit_retry decorator.
-    
+
     Works with async/await functions.
-    
+
     Args:
         retry_config: RetryConfig instance. If None, uses defaults.
-    
+
     Returns:
         Decorated async function with retry logic.
     """

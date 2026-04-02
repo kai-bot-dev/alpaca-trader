@@ -17,7 +17,7 @@ Replace stock-based auto-trading with an options-first strategy. When the scanne
 - Buy **call options** on the underlying
 - Strike: slightly OTM to ATM (delta 0.35-0.55 range — the "sweet spot")
 - Expiry: 7-14 DTE (days to expiration) — enough theta runway, not too expensive
-  - Prefer weekly options (Friday expiry) 
+  - Prefer weekly options (Friday expiry)
   - If < 5 DTE available, skip to next week
 - Max contracts per trade: sized so total premium <= 2% of portfolio ($2,200)
 - Entry filter: only buy if IV rank < 50% (don't buy expensive options)
@@ -46,7 +46,7 @@ Given: underlying_price, signal_direction, available_chain
 3. Filter by: delta range, OI >= 10, spread <= 15% of mid
 4. Score remaining contracts:
    - Delta proximity to 0.45: weight 40%
-   - Lower theta decay: weight 30% 
+   - Lower theta decay: weight 30%
    - Higher OI (liquidity): weight 20%
    - Tighter spread: weight 10%
 5. Select top-scoring contract
@@ -98,7 +98,7 @@ Given: underlying_price, signal_direction, available_chain
 - `src/alpaca_trader/engine/strike_selector.py` — Strike selection + scoring
 - `src/alpaca_trader/engine/options_position_manager.py` — Options exit rules
 
-### Modified Files  
+### Modified Files
 - `src/alpaca_trader/engine/auto_trader.py` — Add `trading_mode: str = "options" | "stocks"` param
 - `src/alpaca_trader/engine/trade_journal.py` — Add option-specific fields (strike, expiry, premium, greeks at entry)
 - `src/alpaca_trader/core/database.py` — Extend journal schema for options trades
@@ -146,7 +146,7 @@ ALTER TABLE trade_journal ADD COLUMN iv_at_entry REAL;
 
 ## Testing Strategy
 - Unit tests for StrikeSelector scoring
-- Unit tests for options exit rules  
+- Unit tests for options exit rules
 - Integration test: mock chain -> mock trade -> verify journal entry
 - Paper trade validation: run for 50 trades before any live consideration
 

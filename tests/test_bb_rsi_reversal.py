@@ -4,10 +4,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from alpaca_trader.strategies.bb_rsi_reversal import BBRSIReversalDetector, BBRSIReversalSignal
+from alpaca_trader.strategies.bb_rsi_reversal import (
+    BBRSIReversalDetector,
+    BBRSIReversalSignal,
+)
 
 
-def _make_ohlcv(n: int, prices: list[float] | None = None, volumes: list[float] | None = None) -> pd.DataFrame:
+def _make_ohlcv(
+    n: int, prices: list[float] | None = None, volumes: list[float] | None = None
+) -> pd.DataFrame:
     """Build a minimal OHLCV DataFrame."""
     if prices is None:
         prices = [100.0] * n
@@ -19,7 +24,9 @@ def _make_ohlcv(n: int, prices: list[float] | None = None, volumes: list[float] 
         volume = pd.Series([1_000_000.0] * n)
     else:
         volume = pd.Series(volumes, dtype=float)
-    return pd.DataFrame({"open": open_, "high": high, "low": low, "close": close, "volume": volume})
+    return pd.DataFrame(
+        {"open": open_, "high": high, "low": low, "close": close, "volume": volume}
+    )
 
 
 def _make_oversold_df(n: int = 50) -> pd.DataFrame:
@@ -52,9 +59,16 @@ def _make_overbought_df(n: int = 50) -> pd.DataFrame:
 class TestBBRSIReversalSignalDataclass:
     def test_dataclass_fields(self):
         sig = BBRSIReversalSignal(
-            detected=True, direction="long", strength=0.67,
-            rsi=28.0, bb_pct=-0.1, confirmations=["volume_spike", "candle_pattern"],
-            entry_price=95.0, target_price=100.0, stop_price=85.0, risk_reward=0.5,
+            detected=True,
+            direction="long",
+            strength=0.67,
+            rsi=28.0,
+            bb_pct=-0.1,
+            confirmations=["volume_spike", "candle_pattern"],
+            entry_price=95.0,
+            target_price=100.0,
+            stop_price=85.0,
+            risk_reward=0.5,
         )
         assert sig.detected is True
         assert sig.direction == "long"
@@ -72,7 +86,9 @@ class TestInsufficientData:
 
     def test_exactly_min_rows_minus_one_returns_no_signal(self):
         detector = BBRSIReversalDetector()
-        min_rows = max(detector.bb.period, detector.rsi_period, detector.volume_sma_period)
+        min_rows = max(
+            detector.bb.period, detector.rsi_period, detector.volume_sma_period
+        )
         df = _make_ohlcv(min_rows)  # one short of min_rows + 1
         sig = detector.detect(df)
         assert sig.detected is False
@@ -158,13 +174,22 @@ class TestShortSignal:
 
 
 class TestStrengthScoring:
-    def _build_signal_with_confirmations(self, n_confirmations: int) -> BBRSIReversalSignal:
+    def _build_signal_with_confirmations(
+        self, n_confirmations: int
+    ) -> BBRSIReversalSignal:
         """Return a signal via mocked confirmation count."""
         # We test strength = confirmations / 3
         sig = BBRSIReversalSignal(
-            detected=True, direction="long", strength=round(n_confirmations / 3.0, 4),
-            rsi=25.0, bb_pct=-0.05, confirmations=["x"] * n_confirmations,
-            entry_price=95.0, target_price=100.0, stop_price=85.0, risk_reward=0.5,
+            detected=True,
+            direction="long",
+            strength=round(n_confirmations / 3.0, 4),
+            rsi=25.0,
+            bb_pct=-0.05,
+            confirmations=["x"] * n_confirmations,
+            entry_price=95.0,
+            target_price=100.0,
+            stop_price=85.0,
+            risk_reward=0.5,
         )
         return sig
 
@@ -265,6 +290,7 @@ class TestRSIDivergence:
     def setup_method(self):
         self.detector = BBRSIReversalDetector()
         from alpaca_trader.strategies.indicators import calc_rsi
+
         self.calc_rsi = calc_rsi
 
     def test_bullish_divergence_detected(self):
@@ -275,10 +301,9 @@ class TestRSIDivergence:
         df = _make_ohlcv(n, prices=[float(p) for p in prices])
         rsi = self.calc_rsi(df["close"])
         # Manually test: if the last close is lower than prev closes, and last rsi > prev rsi_min
-        current_close = float(df["close"].iloc[-1])
-        prev_closes = df["close"].iloc[-6:-1]
-        current_rsi = float(rsi.iloc[-1]) if not pd.isna(rsi.iloc[-1]) else 50.0
-        prev_rsi = rsi.iloc[-6:-1]
+        # Test divergence detection - variables kept for reference
+        _ = float(df["close"].iloc[-1])
+        _ = df["close"].iloc[-6:-1]
         # Just verify the function runs without error
         result = self.detector._check_rsi_divergence(df, rsi, "long")
         assert isinstance(result, bool)
@@ -286,6 +311,7 @@ class TestRSIDivergence:
     def test_insufficient_data_returns_false(self):
         df = _make_ohlcv(3)
         from alpaca_trader.strategies.indicators import calc_rsi
+
         rsi = calc_rsi(df["close"])
         result = self.detector._check_rsi_divergence(df, rsi, "long", lookback=5)
         assert result is False

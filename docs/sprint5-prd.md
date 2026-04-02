@@ -53,7 +53,7 @@ class Alert:
 ```bash
 alpaca-trader alert list                    # List all active alerts
 alpaca-trader alert add pnl AAPL --threshold 10  # Add P&L alert
-alpaca-trader alert add expiry AAPL --days 7     # Add expiry alert  
+alpaca-trader alert add expiry AAPL --days 7     # Add expiry alert
 alpaca-trader alert add price AAPL --target 150  # Add price target alert
 alpaca-trader alert add squeeze AAPL             # Add squeeze detection alert
 alpaca-trader alert dismiss <id>                  # Dismiss an alert

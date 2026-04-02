@@ -16,7 +16,7 @@ SQLite-based trade logging. Add table to existing database schema.
 ```python
 class TradeJournal:
     """Log all trades with entry/exit prices, timestamps, P&L, strategy used."""
-    
+
     async def log_entry(symbol, side, qty, price, strategy, signal_details) -> int  # trade_id
     async def log_exit(trade_id, price, reason) -> None
     async def get_trades(limit=50, strategy=None) -> list[dict]
@@ -51,17 +51,17 @@ Monitors open positions and applies exit rules.
 ```python
 class PositionManager:
     """Monitor positions and enforce exit rules."""
-    
+
     # Exit rules (configurable):
     stop_loss_pct: float = -0.30        # -30% from entry
     take_profit_pct: float = 0.50       # +50% from entry
     trailing_stop_trigger: float = 0.25  # activate trailing stop at +25%
     trailing_stop_pct: float = 0.15     # trail by 15%
     max_hold_days: int = 30             # time-based exit
-    
+
     def check_exits(positions: list[dict], journal: TradeJournal) -> list[dict]
         """Return list of positions that should be exited, with reason."""
-    
+
     def should_exit(position, entry_price, entry_time, high_water_mark) -> tuple[bool, str]
         """Check if a single position meets any exit criteria."""
 ```
@@ -75,10 +75,10 @@ The main orchestration loop that ties everything together.
 ```python
 class AutoTrader:
     """Main auto-trading orchestrator. Runs as a cron job every 5 minutes during market hours."""
-    
+
     def __init__(self, risk_manager, order_executor, position_manager, trade_journal):
         self.enabled: bool = False  # persisted in settings table
-        
+
     async def run_cycle(self) -> dict:
         """One auto-trade cycle:
         1. Check if enabled + market hours
@@ -90,7 +90,7 @@ class AutoTrader:
         7. Log everything to journal
         8. Return summary dict for Telegram delivery
         """
-    
+
     async def enable(self) -> None  # persist to DB settings
     async def disable(self) -> None
     async def status(self) -> dict  # enabled, circuit_breaker, trades_today, etc.

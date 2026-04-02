@@ -1,7 +1,6 @@
 """Bollinger Bounce (mean reversion) detection."""
 
 from dataclasses import dataclass
-from typing import Optional
 
 import pandas as pd
 
@@ -12,10 +11,10 @@ from alpaca_trader.strategies.indicators import calc_rsi, calc_adx
 @dataclass
 class BounceSignal:
     detected: bool
-    direction: str       # 'long', 'short', or 'none'
-    band_touched: str    # 'upper', 'lower', or 'none'
-    rsi: float           # Current RSI value
-    adx: float           # Current ADX value (range-bound if < 25)
+    direction: str  # 'long', 'short', or 'none'
+    band_touched: str  # 'upper', 'lower', or 'none'
+    rsi: float  # Current RSI value
+    adx: float  # Current ADX value (range-bound if < 25)
 
 
 # Keep private aliases for backward compatibility
@@ -49,8 +48,13 @@ class BounceDetector:
         ...     print(f'RSI={signal.rsi:.1f}, ADX={signal.adx:.1f}')
     """
 
-    def __init__(self, bb_period: int = 20, bb_std_dev: float = 2.0,
-                 rsi_period: int = 14, adx_period: int = 14):
+    def __init__(
+        self,
+        bb_period: int = 20,
+        bb_std_dev: float = 2.0,
+        rsi_period: int = 14,
+        adx_period: int = 14,
+    ):
         self.bb = BollingerBands(period=bb_period, std_dev=bb_std_dev)
         self.rsi_period = rsi_period
         self.adx_period = adx_period
@@ -66,8 +70,9 @@ class BounceDetector:
         """
         min_rows = max(self.bb.period, self.rsi_period, self.adx_period) + 1
         if len(df) < min_rows:
-            return BounceSignal(detected=False, direction="none",
-                                band_touched="none", rsi=50.0, adx=0.0)
+            return BounceSignal(
+                detected=False, direction="none", band_touched="none", rsi=50.0, adx=0.0
+            )
 
         enriched = self.bb.calc(df)
         rsi_series = _calc_rsi(df["close"], self.rsi_period)
@@ -82,16 +87,20 @@ class BounceDetector:
 
         # Must be range-bound (ADX < 25)
         if adx >= 25:
-            return BounceSignal(detected=False, direction="none",
-                                band_touched="none", rsi=rsi, adx=adx)
+            return BounceSignal(
+                detected=False, direction="none", band_touched="none", rsi=rsi, adx=adx
+            )
 
         # Check band touch with RSI confirmation
         if close <= lower and rsi < 35:
-            return BounceSignal(detected=True, direction="long",
-                                band_touched="lower", rsi=rsi, adx=adx)
+            return BounceSignal(
+                detected=True, direction="long", band_touched="lower", rsi=rsi, adx=adx
+            )
         elif close >= upper and rsi > 65:
-            return BounceSignal(detected=True, direction="short",
-                                band_touched="upper", rsi=rsi, adx=adx)
+            return BounceSignal(
+                detected=True, direction="short", band_touched="upper", rsi=rsi, adx=adx
+            )
 
-        return BounceSignal(detected=False, direction="none",
-                            band_touched="none", rsi=rsi, adx=adx)
+        return BounceSignal(
+            detected=False, direction="none", band_touched="none", rsi=rsi, adx=adx
+        )

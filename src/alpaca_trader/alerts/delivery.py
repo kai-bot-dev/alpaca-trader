@@ -2,7 +2,6 @@
 
 import json
 import logging
-import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,7 +30,9 @@ def _save_queue(queue: list[dict]) -> None:
 class TelegramDeliveryQueue:
     """File-based queue that buffers triggered alerts for OpenClaw delivery."""
 
-    def queue_alert(self, alert: dict, context: dict | None = None, severity: str = "info") -> str:
+    def queue_alert(
+        self, alert: dict, context: dict | None = None, severity: str = "info"
+    ) -> str:
         """Write a triggered alert to the queue. Returns the queue entry ID.
 
         Duplicate prevention: alerts with the same alert_id are not re-queued
@@ -54,13 +55,21 @@ class TelegramDeliveryQueue:
             "symbol": alert.get("symbol", ""),
             "message": alert.get("message", ""),
             "severity": severity,
-            "triggered_at": alert.get("triggered_at") or datetime.now(timezone.utc).isoformat(),
+            "triggered_at": alert.get("triggered_at")
+            or datetime.now(timezone.utc).isoformat(),
             "context": context or {},
             "delivered": False,
         }
         queue.append(entry)
         _save_queue(queue)
-        logger.info("Alert queued", extra={"queue_id": queue_id, "symbol": entry["symbol"], "alert_type": entry["alert_type"]})
+        logger.info(
+            "Alert queued",
+            extra={
+                "queue_id": queue_id,
+                "symbol": entry["symbol"],
+                "alert_type": entry["alert_type"],
+            },
+        )
         return queue_id
 
     def get_pending(self) -> list[dict]:

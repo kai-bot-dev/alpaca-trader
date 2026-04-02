@@ -39,11 +39,14 @@ def calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     close = df["close"]
 
     prev_close = close.shift(1)
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
 
     up_move = high.diff()
     down_move = -low.diff()
@@ -54,8 +57,16 @@ def calc_adx(df: pd.DataFrame, period: int = 14) -> pd.Series:
     neg_dm_s = pd.Series(neg_dm, index=df.index)
 
     atr = tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
-    pos_di = 100 * pos_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan)
-    neg_di = 100 * neg_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean() / atr.replace(0, np.nan)
+    pos_di = (
+        100
+        * pos_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+        / atr.replace(0, np.nan)
+    )
+    neg_di = (
+        100
+        * neg_dm_s.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+        / atr.replace(0, np.nan)
+    )
 
     dx = 100 * (pos_di - neg_di).abs() / (pos_di + neg_di).replace(0, np.nan)
     adx = dx.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
@@ -102,11 +113,14 @@ def calc_atr(df: pd.DataFrame, period: int = 14) -> pd.Series:
     close = df["close"]
     prev_close = close.shift(1)
 
-    tr = pd.concat([
-        high - low,
-        (high - prev_close).abs(),
-        (low - prev_close).abs(),
-    ], axis=1).max(axis=1)
+    tr = pd.concat(
+        [
+            high - low,
+            (high - prev_close).abs(),
+            (low - prev_close).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
 
     atr = tr.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
     return atr

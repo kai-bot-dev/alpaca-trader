@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
-from datetime import datetime, timezone, timedelta
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -140,7 +140,9 @@ class PositionManager:
             symbol = (pos.get("symbol") or "").upper()
             try:
                 current_price = float(pos.get("current_price") or 0)
-                entry_price = float(pos.get("avg_entry_price") or pos.get("avg_cost") or 0)
+                entry_price = float(
+                    pos.get("avg_entry_price") or pos.get("avg_cost") or 0
+                )
             except (TypeError, ValueError):
                 continue
 
@@ -165,7 +167,10 @@ class PositionManager:
                 exits.append(exit_pos)
                 logger.info(
                     "Exit signal for %s: %s (price=%.2f, entry=%.2f)",
-                    symbol, reason, current_price, entry_price,
+                    symbol,
+                    reason,
+                    current_price,
+                    entry_price,
                 )
 
         return exits

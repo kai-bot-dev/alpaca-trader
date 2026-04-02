@@ -2,7 +2,7 @@
 
 import pytest
 from decimal import Decimal
-from datetime import datetime, date
+from datetime import datetime
 
 from alpaca_trader.core.models import (
     OrderSide,

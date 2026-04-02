@@ -1,7 +1,7 @@
 """Unit tests for engine.order_executor module."""
 
 import pytest
-from unittest.mock import MagicMock, patch, call
+from unittest.mock import MagicMock
 
 from alpaca_trader.engine.order_executor import (
     OrderExecutor,
@@ -16,7 +16,9 @@ def mock_broker_ok(symbol, qty, side, limit_price=None, **kwargs):
 
 
 def make_executor(dry_run=False, max_retries=3, retry_delay_ms=0) -> OrderExecutor:
-    cfg = ExecutorConfig(dry_run=dry_run, max_retries=max_retries, retry_delay_ms=retry_delay_ms)
+    cfg = ExecutorConfig(
+        dry_run=dry_run, max_retries=max_retries, retry_delay_ms=retry_delay_ms
+    )
     return OrderExecutor(broker_fn=mock_broker_ok, config=cfg)
 
 
@@ -37,8 +39,13 @@ class TestExecutorConfig:
 class TestOrderResult:
     def test_fields(self):
         result = OrderResult(
-            success=True, order_id="abc", status=OrderStatus.SUBMITTED,
-            symbol="TSLA", qty=5, side="buy", order_type="market",
+            success=True,
+            order_id="abc",
+            status=OrderStatus.SUBMITTED,
+            symbol="TSLA",
+            qty=5,
+            side="buy",
+            order_type="market",
         )
         assert result.success
         assert result.order_id == "abc"
@@ -231,9 +238,12 @@ class TestSlippageRecording:
 
     def test_record_fill_warns_on_high_slippage(self, caplog):
         import logging
+
         ex = make_executor()
         result = ex.place_market_order("AAPL", 10, "buy")
-        with caplog.at_level(logging.WARNING, logger="alpaca_trader.engine.order_executor"):
+        with caplog.at_level(
+            logging.WARNING, logger="alpaca_trader.engine.order_executor"
+        ):
             ex.record_fill(result.order_id, fill_price=160.0, signal_price=150.0)
         assert any("slippage" in record.message.lower() for record in caplog.records)
 

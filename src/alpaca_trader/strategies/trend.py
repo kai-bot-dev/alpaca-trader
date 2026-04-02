@@ -11,8 +11,8 @@ from alpaca_trader.strategies.indicators import calc_macd
 @dataclass
 class TrendSignal:
     detected: bool
-    direction: str    # 'long', 'short', or 'none'
-    strength: float   # 0.0–1.0: proportion of last N candles along the band
+    direction: str  # 'long', 'short', or 'none'
+    strength: float  # 0.0–1.0: proportion of last N candles along the band
     macd_hist: float  # Current MACD histogram value (positive = bullish)
 
 
@@ -48,9 +48,15 @@ class TrendDetector:
         ...     print(f'MACD histogram={signal.macd_hist:.4f}')
     """
 
-    def __init__(self, bb_period: int = 20, bb_std_dev: float = 2.0,
-                 lookback: int = 5,
-                 macd_fast: int = 12, macd_slow: int = 26, macd_signal: int = 9):
+    def __init__(
+        self,
+        bb_period: int = 20,
+        bb_std_dev: float = 2.0,
+        lookback: int = 5,
+        macd_fast: int = 12,
+        macd_slow: int = 26,
+        macd_signal: int = 9,
+    ):
         self.bb = BollingerBands(period=bb_period, std_dev=bb_std_dev)
         self.lookback = lookback
         self.macd_fast = macd_fast
@@ -68,18 +74,21 @@ class TrendDetector:
         """
         min_rows = max(self.bb.period, self.macd_slow) + self.lookback
         if len(df) < min_rows:
-            return TrendSignal(detected=False, direction="none",
-                               strength=0.0, macd_hist=0.0)
+            return TrendSignal(
+                detected=False, direction="none", strength=0.0, macd_hist=0.0
+            )
 
         enriched = self.bb.calc(df)
         _, _, histogram = _calc_macd(
             df["close"], self.macd_fast, self.macd_slow, self.macd_signal_period
         )
 
-        macd_hist = float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else 0.0
+        macd_hist = (
+            float(histogram.iloc[-1]) if not pd.isna(histogram.iloc[-1]) else 0.0
+        )
 
         # Check last N candles: price hugging upper or lower band
-        recent = enriched.iloc[-self.lookback:]
+        recent = enriched.iloc[-self.lookback :]
 
         # Count candles where close >= bb_middle (upper walk) or <= bb_middle (lower walk)
         upper_hugging = (recent["close"] >= recent["bb_middle"]).sum()
@@ -90,11 +99,20 @@ class TrendDetector:
 
         # Require at least 60% of candles hugging a band AND MACD confirmation
         if upper_strength >= 0.6 and macd_hist > 0:
-            return TrendSignal(detected=True, direction="long",
-                               strength=float(upper_strength), macd_hist=macd_hist)
+            return TrendSignal(
+                detected=True,
+                direction="long",
+                strength=float(upper_strength),
+                macd_hist=macd_hist,
+            )
         elif lower_strength >= 0.6 and macd_hist < 0:
-            return TrendSignal(detected=True, direction="short",
-                               strength=float(lower_strength), macd_hist=macd_hist)
+            return TrendSignal(
+                detected=True,
+                direction="short",
+                strength=float(lower_strength),
+                macd_hist=macd_hist,
+            )
 
-        return TrendSignal(detected=False, direction="none",
-                           strength=0.0, macd_hist=macd_hist)
+        return TrendSignal(
+            detected=False, direction="none", strength=0.0, macd_hist=macd_hist
+        )

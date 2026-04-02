@@ -57,7 +57,9 @@ class TestRiskConfig:
 
 class TestRiskCheckResult:
     def test_approved_flag(self):
-        result = RiskCheckResult(approved=True, reason="OK", adjusted_qty=5, adjusted_value=750.0)
+        result = RiskCheckResult(
+            approved=True, reason="OK", adjusted_qty=5, adjusted_value=750.0
+        )
         assert result.approved is True
         assert result.rejected is False
 
@@ -218,7 +220,9 @@ class TestPositionSizing:
 
     def test_position_full_rejects(self):
         rm = make_rm(max_position_pct=0.10)
-        result = good_order(rm, qty=1, price=100.0, existing_position_value=10_000.0, cash=80_000.0)
+        result = good_order(
+            rm, qty=1, price=100.0, existing_position_value=10_000.0, cash=80_000.0
+        )
         assert result.rejected
 
     def test_calculate_position_size(self):
@@ -228,7 +232,9 @@ class TestPositionSizing:
 
     def test_calculate_position_size_with_existing(self):
         rm = make_rm(max_position_pct=0.10)
-        size = rm.calculate_position_size(price=50.0, portfolio_value=100_000.0, existing_position_value=5_000.0)
+        size = rm.calculate_position_size(
+            price=50.0, portfolio_value=100_000.0, existing_position_value=5_000.0
+        )
         assert size == 100
 
     def test_calculate_position_size_zero_price(self):

@@ -1,8 +1,7 @@
 """Earnings filter — skip trading around earnings events."""
+
 from dataclasses import dataclass
-from typing import Optional
 import json
-import asyncio
 
 from alpaca_trader.core import client as alpaca
 from alpaca_trader.core import database as db
@@ -41,11 +40,11 @@ async def remove_from_earnings_skip(symbol: str) -> None:
 def has_unusual_volume(symbol: str, threshold: float = 2.5) -> bool:
     """Check if recent volume is unusually high (possible earnings/event approaching)."""
     try:
-        df = alpaca.get_stock_bars_df(symbol, period='1D', limit=22)
+        df = alpaca.get_stock_bars_df(symbol, period="1D", limit=22)
         if len(df) < 20:
             return False
-        avg_vol = df['volume'].iloc[:-1].mean()
-        latest_vol = df['volume'].iloc[-1]
+        avg_vol = df["volume"].iloc[:-1].mean()
+        latest_vol = df["volume"].iloc[-1]
         return latest_vol > avg_vol * threshold
     except Exception:
         return False
@@ -64,6 +63,8 @@ async def check_earnings(symbol: str) -> EarningsCheckResult:
         return EarningsCheckResult(True, f"{symbol} in earnings skip list")
 
     if has_unusual_volume(symbol):
-        return EarningsCheckResult(True, f"{symbol} has unusual volume (possible event)")
+        return EarningsCheckResult(
+            True, f"{symbol} has unusual volume (possible event)"
+        )
 
     return EarningsCheckResult(False, "")
