@@ -96,7 +96,8 @@ class AlertChecker:
             # or the underlying might match
             if symbol.upper() not in pos_symbol.upper():
                 continue
-            # Try to parse expiry from OCC symbol (format: TICKER + YYMMDD + C/P + strike)
+            # Try to parse expiry from OCC symbol
+            # Format: TICKER + YYMMDD + C/P + strike
             try:
                 # OCC symbol: underlying(variable) + YYMMDD + type + strike(8 digits)
                 # Find the date part by looking for 6-digit date after the letters
@@ -110,7 +111,8 @@ class AlertChecker:
                     )
                     days_to_expiry = (expiry - today).days
                     if 0 <= days_to_expiry <= days_threshold:
-                        return f"EXPIRY {pos_symbol}: {days_to_expiry}d to expiry ({expiry})"
+                        msg = f"EXPIRY {pos_symbol}: {days_to_expiry}d to expiry ({expiry})"
+                        return msg
             except Exception:
                 continue
         return None
@@ -140,7 +142,8 @@ class AlertChecker:
         signals = scanner.scan([symbol], strategy="squeeze")
         if signals and signals[0].detected:
             sig = signals[0]
-            return f"SQUEEZE {symbol}: {sig.direction} signal (strength {sig.strength:.2f})"
+            msg = f"SQUEEZE {symbol}: {sig.direction} signal (strength {sig.strength:.2f})"
+            return msg
         return None
 
     async def _check_signal(self, symbol: str, condition: dict) -> Optional[str]:
