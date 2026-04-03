@@ -50,6 +50,19 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
 - [ ] Historical P&L charting on dashboard
 
 ## Completed
+- ✅ Migrate Pydantic models from deprecated Config to ConfigDict (2026-04-03)
+  - Updated AccountInfo, Position, Order, OptionContract models
+  - Replaced class Config with model_config = ConfigDict(from_attributes=True)
+  - Eliminates PydanticDeprecatedSince20 warnings (from 4 to 0)
+  - Prepares codebase for Pydantic v3.0
+  - All 314 tests passing
+
+- ✅ Fix long lines in checker.py (complete ruff E501 cleanup) (2026-04-03)
+  - Split all long comments and f-strings in _check_expiry, _check_squeeze, _check_signal
+  - All lines now conform to 88 character limit
+  - ruff check: all passed
+  - All 314 tests passing
+
 - ✅ Async scanner refactor + CLI --verbose flag (2026-04-01)
   - Added scan_async() to WatchlistScanner with asyncio.to_thread + semaphore (MAX_CONCURRENCY=5)
   - Updated ScheduledScanner to use scan_async() for concurrent scheduled scans
