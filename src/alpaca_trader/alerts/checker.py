@@ -111,7 +111,8 @@ class AlertChecker:
                     )
                     days_to_expiry = (expiry - today).days
                     if 0 <= days_to_expiry <= days_threshold:
-                        msg = f"EXPIRY {pos_symbol}: {days_to_expiry}d to expiry ({expiry})"
+                        expiry_str = str(expiry)
+                        msg = f"EXPIRY {pos_symbol}: {days_to_expiry}d to expiry ({expiry_str})"
                         return msg
             except Exception:
                 continue
@@ -142,7 +143,8 @@ class AlertChecker:
         signals = scanner.scan([symbol], strategy="squeeze")
         if signals and signals[0].detected:
             sig = signals[0]
-            msg = f"SQUEEZE {symbol}: {sig.direction} signal (strength {sig.strength:.2f})"
+            strength_str = f"{sig.strength:.2f}"
+            msg = f"SQUEEZE {symbol}: {sig.direction} signal (strength {strength_str})"
             return msg
         return None
 
@@ -153,5 +155,6 @@ class AlertChecker:
         signals = scanner.scan([symbol], strategy=strategy)
         if signals and signals[0].detected:
             sig = signals[0]
-            return f"SIGNAL {symbol} [{strategy}]: {sig.direction} (strength {sig.strength:.2f})"
+            strength_str = f"{sig.strength:.2f}"
+            return f"SIGNAL {symbol} [{strategy}]: {sig.direction} (strength {strength_str})"
         return None
