@@ -281,6 +281,18 @@ class AutoTrader:
         open_position_symbols = {(p.get("symbol") or "").upper() for p in positions}
         open_positions_count = len(positions)
 
+        # Also check pending orders to avoid duplicate entries
+        try:
+            pending_orders = alpaca.get_orders(status="open", limit=100)
+            pending_symbols = {
+                (o.get("symbol") or "").upper()
+                for o in pending_orders
+                if o.get("side") == "buy"
+            }
+            open_position_symbols = open_position_symbols | pending_symbols
+        except Exception:
+            pass  # If we can't check, proceed with just position check
+
         # Step 6 & 7: Risk check + execute entries
         for signal in actionable:
             symbol = signal.symbol
