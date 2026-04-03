@@ -1,6 +1,7 @@
 """OptionsTrader orchestrator — scan signals → select strikes → risk check → execute → journal."""
 
 from __future__ import annotations
+import json
 
 import logging
 from datetime import datetime, timezone, time as dtime, timedelta
@@ -314,6 +315,14 @@ class OptionsTrader:
         actionable = list(best_by_symbol.values())
         summary["signals_found"] = len(actionable)
 
+        # Load symbols to skip (inactive assets + hard-blocked symbols)
+        skip_raw = await db.setting_get("exit_skip_symbols") or "[]"
+        try:
+            skip_symbols = set(json.loads(skip_raw))
+        except Exception:
+            skip_symbols = set()
+        skip_symbols.add("CYBR")  # hard block — never trade CYBR
+
         open_option_symbols = {(p.get("symbol") or "").upper() for p in positions}
         open_positions_count = len(positions)
 
@@ -357,6 +366,11 @@ class OptionsTrader:
                     "OptionsTrader: max positions reached (%d)", open_positions_count
                 )
                 break
+
+            # Skip globally blocked symbols
+            if underlying in skip_symbols:
+                logger.info("OptionsTrader: skipping blocked symbol %s", underlying)
+                continue
 
             # Skip if we already hold an option on this underlying
             if any(underlying in sym for sym in open_option_symbols):

@@ -1,6 +1,7 @@
 """AutoTrader orchestrator — ties scanner → risk → execution → journal."""
 
 from __future__ import annotations
+import json
 
 import logging
 from datetime import datetime, timezone, time as dtime
@@ -259,12 +260,24 @@ class AutoTrader:
         actionable = list(best_by_symbol.values())
         summary["signals_found"] = len(actionable)
 
+        # Load symbols to skip (inactive assets + hard-blocked symbols)
+        skip_raw = await db.setting_get("exit_skip_symbols") or "[]"
+        try:
+            skip_symbols = set(json.loads(skip_raw))
+        except Exception:
+            skip_symbols = set()
+        skip_symbols.add("CYBR")  # hard block — never trade CYBR
+
         open_position_symbols = {(p.get("symbol") or "").upper() for p in positions}
         open_positions_count = len(positions)
 
         # Step 6 & 7: Risk check + execute entries
         for signal in actionable:
             symbol = signal.symbol
+            # Skip globally blocked symbols
+            if symbol in skip_symbols:
+                logger.info("AutoTrader: skipping blocked symbol %s", symbol)
+                continue
             # Skip if we already hold this symbol
             if symbol in open_position_symbols:
                 continue

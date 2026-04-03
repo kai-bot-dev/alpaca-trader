@@ -111,6 +111,15 @@ async def main() -> None:
             print("MARKET_CLOSED")
         return
 
+    # Hard block: never trade these symbols (anywhere in the pipeline)
+    skip_raw = await db.setting_get("exit_skip_symbols") or "[]"
+    try:
+        global_skip = set(json.loads(skip_raw))
+    except (json.JSONDecodeError, TypeError):
+        global_skip = set()
+    # Also add any that are hardcoded
+    global_skip.add("CYBR")
+
     trading_mode = await db.setting_get("trading_mode") or "stocks"
 
     if trading_mode == "options":
