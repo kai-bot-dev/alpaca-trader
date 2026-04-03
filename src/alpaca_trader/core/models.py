@@ -5,7 +5,7 @@ from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 # --- Enums ---
@@ -63,6 +63,8 @@ class OptionStyle(str, Enum):
 
 
 class AccountInfo(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     account_number: str
     status: str
@@ -89,14 +91,13 @@ class AccountInfo(BaseModel):
     shorting_enabled: bool = False
     day_trade_count: int = 0
 
-    class Config:
-        from_attributes = True
-
 
 # --- Position Models ---
 
 
 class Position(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     asset_id: str
     symbol: str
     exchange: Optional[str] = None
@@ -114,14 +115,13 @@ class Position(BaseModel):
     lastday_price: Optional[Decimal] = None
     change_today: Optional[Decimal] = None
 
-    class Config:
-        from_attributes = True
-
 
 # --- Order Models ---
 
 
 class Order(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: str
     client_order_id: Optional[str] = None
     created_at: Optional[datetime] = None
@@ -155,9 +155,6 @@ class Order(BaseModel):
     trail_price: Optional[Decimal] = None
     hwm: Optional[Decimal] = None
 
-    class Config:
-        from_attributes = True
-
 
 class PlaceOptionOrderRequest(BaseModel):
     symbol: str = Field(
@@ -185,6 +182,8 @@ class OptionGreeks(BaseModel):
 
 
 class OptionContract(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
     id: Optional[str] = None
     symbol: str
     underlying_symbol: str
@@ -209,9 +208,6 @@ class OptionContract(BaseModel):
     # Greeks
     greeks: Optional[OptionGreeks] = None
     implied_volatility: Optional[float] = None
-
-    class Config:
-        from_attributes = True
 
 
 class OptionsChainResponse(BaseModel):
