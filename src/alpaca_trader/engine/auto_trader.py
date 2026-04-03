@@ -164,10 +164,20 @@ class AutoTrader:
             return summary
 
         # Step 3 & 4: Check open positions for exits
+        # Load skip list for exit filtering
+        _skip_raw = await db.setting_get("exit_skip_symbols") or "[]"
+        try:
+            _exit_skip = set(json.loads(_skip_raw))
+        except Exception:
+            _exit_skip = set()
+        _exit_skip.add("CYBR")  # hard block
+
         try:
             from alpaca_trader.core import client as alpaca
 
             positions = alpaca.get_positions()
+            # Filter out blocked symbols entirely
+            positions = [p for p in positions if p.get("symbol", "") not in _exit_skip]
         except Exception as e:
             summary["errors"].append(f"Positions fetch failed: {e}")
             logger.error("AutoTrader: positions fetch failed: %s", e)
