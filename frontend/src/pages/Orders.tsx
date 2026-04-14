@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { ClipboardList, Plus, X, AlertCircle } from 'lucide-react'
 import { getOrders, placeOrder, cancelOrder } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type Order = Record<string, unknown>
 
@@ -15,7 +16,7 @@ const TIME_IN_FORCE = ['day', 'gtc', 'ioc', 'fok']
 export default function Orders() {
   const [orders, setOrders]     = useState<Order[]>([])
   const [loading, setLoading]   = useState(true)
-  const [error, setError]       = useState<string | null>(null)
+  const { addToast } = useToast()
   const [statusFilter, setStatusFilter] = useState('all')
   const [showForm, setShowForm] = useState(false)
   const [submitting, setSubmitting] = useState(false)
@@ -35,12 +36,11 @@ export default function Orders() {
 
   const load = async () => {
     setLoading(true)
-    setError(null)
     try {
       const status = statusFilter === 'all' ? undefined : statusFilter
       setOrders(await getOrders(status))
     } catch (e) {
-      setError(String(e))
+      addToast('Failed to load orders: ' + String(e), 'error')
     } finally {
       setLoading(false)
     }
@@ -88,7 +88,7 @@ export default function Orders() {
       await cancelOrder(id)
       await load()
     } catch (e) {
-      setError(String(e))
+      addToast('Failed to cancel order: ' + String(e), 'error')
     } finally {
       setCancelingId(null)
     }
@@ -212,12 +212,7 @@ export default function Orders() {
         ))}
       </div>
 
-      {error && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', borderColor: 'rgba(240,77,77,0.3)' }}>
-          <AlertCircle size={16} color="#F04D4D" />
-          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#F04D4D' }}>{error}</span>
-        </div>
-      )}
+
 
       <div className="card" style={{ overflow: 'hidden' }}>
         <div style={{ padding: '14px 16px', borderBottom: '1px solid #1A1F2E', display: 'flex', alignItems: 'center', gap: 8 }}>

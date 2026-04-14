@@ -1,6 +1,7 @@
 import { useState } from 'react'
-import { Search, AlertCircle, Link2 } from 'lucide-react'
+import { Search, Link2 } from 'lucide-react'
 import { getChain } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type OptionRow = Record<string, unknown>
 
@@ -92,21 +93,20 @@ export default function OptionsChain() {
   const [input, setInput] = useState('')
   const [chain, setChain] = useState<Record<string, unknown> | null>(null)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [tab, setTab] = useState<'call' | 'put'>('call')
+  const { addToast } = useToast()
 
   const search = async () => {
     const s = input.trim().toUpperCase()
     if (!s) return
     setLoading(true)
-    setError(null)
     setChain(null)
     try {
       const data = await getChain(s)
       setChain(data)
       setSymbol(s)
     } catch (e) {
-      setError(String(e))
+      addToast('Failed to load chain: ' + String(e), 'error')
     } finally {
       setLoading(false)
     }
@@ -151,43 +151,6 @@ export default function OptionsChain() {
           </span>
         )}
       </div>
-
-      {error && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', borderColor: 'rgba(240,77,77,0.3)' }}>
-          <AlertCircle size={16} color="#F04D4D" />
-          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#F04D4D' }}>{error}</span>
-        </div>
-      )}
-
-      {chain && (
-        <div className="card" style={{ overflow: 'hidden' }}>
-          {/* Tabs */}
-          <div style={{ display: 'flex', borderBottom: '1px solid #1A1F2E' }}>
-            {(['call', 'put'] as const).map(t => (
-              <button
-                key={t}
-                onClick={() => setTab(t)}
-                style={{
-                  padding: '12px 24px',
-                  fontFamily: 'Syne',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  border: 'none',
-                  background: 'transparent',
-                  color: tab === t ? '#0ECFB3' : '#6B7280',
-                  borderBottom: `2px solid ${tab === t ? '#0ECFB3' : 'transparent'}`,
-                  transition: 'all 0.12s',
-                }}
-              >
-                {t === 'call' ? `Calls (${calls.length})` : `Puts (${puts.length})`}
-              </button>
-            ))}
-          </div>
-
-          <ChainTable rows={tab === 'call' ? calls : puts} type={tab} />
-        </div>
-      )}
 
       {!chain && !loading && !error && (
         <div

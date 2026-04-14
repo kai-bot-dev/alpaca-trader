@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
-import { Plus, X, Settings as SettingsIcon, AlertCircle, Check } from 'lucide-react'
+import { Plus, X, Settings as SettingsIcon, Check } from 'lucide-react'
 import { getWatchlist, addToWatchlist, removeFromWatchlist } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type WatchItem = Record<string, unknown>
 
@@ -23,10 +24,9 @@ function Field({ label, hint, children }: { label: string; hint?: string; childr
 export default function Settings() {
   const [watchlist, setWatchlist] = useState<WatchItem[]>([])
   const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
   const [newSymbol, setNewSymbol] = useState('')
   const [adding, setAdding]       = useState(false)
-  const [addError, setAddError]   = useState<string | null>(null)
+  const { addToast } = useToast()
   const [removingId, setRemovingId] = useState<string | null>(null)
   const [saved, setSaved]         = useState(false)
 
@@ -45,7 +45,7 @@ export default function Settings() {
   const loadWatchlist = () =>
     getWatchlist()
       .then(w => setWatchlist(w))
-      .catch(e => setError(String(e)))
+      .catch(e => addToast('Failed to load watchlist: ' + String(e), 'error'))
       .finally(() => setLoading(false))
 
   useEffect(() => { loadWatchlist() }, [])
@@ -54,13 +54,12 @@ export default function Settings() {
     const s = newSymbol.trim().toUpperCase()
     if (!s) return
     setAdding(true)
-    setAddError(null)
     try {
       await addToWatchlist(s)
       setNewSymbol('')
       await loadWatchlist()
     } catch (e) {
-      setAddError(String(e))
+      addToast('Failed to add symbol: ' + String(e), 'error')
     } finally {
       setAdding(false)
     }
@@ -72,7 +71,7 @@ export default function Settings() {
       await removeFromWatchlist(symbol)
       await loadWatchlist()
     } catch (e) {
-      setError(String(e))
+      addToast('Failed to remove symbol: ' + String(e), 'error')
     } finally {
       setRemovingId(null)
     }
@@ -94,12 +93,6 @@ export default function Settings() {
         </p>
       </div>
 
-      {error && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', borderColor: 'rgba(240,77,77,0.3)' }}>
-          <AlertCircle size={16} color="#F04D4D" />
-          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#F04D4D' }}>{error}</span>
-        </div>
-      )}
 
       {/* Watchlist */}
       <div className="card" style={{ overflow: 'hidden', marginBottom: 16 }}>
@@ -140,12 +133,6 @@ export default function Settings() {
             </button>
           </div>
 
-          {addError && (
-            <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12 }}>
-              <AlertCircle size={14} color="#F04D4D" />
-              <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#F04D4D' }}>{addError}</span>
-            </div>
-          )}
 
           {loading ? (
             <div style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#6B7280' }}>Loading…</div>

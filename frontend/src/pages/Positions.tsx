@@ -10,6 +10,7 @@ import {
 } from 'recharts'
 import { TrendingUp, TrendingDown, AlertCircle } from 'lucide-react'
 import { getPositions } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type Position = Record<string, unknown>
 
@@ -74,8 +75,8 @@ function PnLChart({ position }: { position: Position }) {
 export default function Positions() {
   const [positions, setPositions] = useState<Position[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
   const [selected, setSelected] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   useEffect(() => {
     getPositions()
@@ -83,12 +84,11 @@ export default function Positions() {
         setPositions(p)
         if (p.length > 0) setSelected(String(p[0].symbol ?? ''))
       })
-      .catch(e => setError(String(e)))
+      .catch(e => addToast('Failed to load positions: ' + String(e), 'error'))
       .finally(() => setLoading(false))
-  }, [])
+  }, []) // eslint-disable-line
 
   if (loading) return <PageLoader />
-  if (error)   return <PageError msg={error} />
 
   const totalPL    = positions.reduce((s, p) => s + parseFloat(String(p.unrealized_pl ?? 0)), 0)
   const totalValue = positions.reduce((s, p) => s + parseFloat(String(p.market_value ?? 0)), 0)

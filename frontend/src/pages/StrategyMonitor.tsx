@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback } from 'react'
-import { Activity, RefreshCw, TrendingUp, TrendingDown, Minus, AlertCircle, Bell, BellOff, CheckCircle, Clock } from 'lucide-react'
+import { Activity, RefreshCw, TrendingUp, TrendingDown, Minus, Bell, BellOff, CheckCircle, Clock } from 'lucide-react'
 import { getWatchlist, getAlerts, dismissAlert, checkAlerts, getMonitorStatus } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type WatchItem = Record<string, unknown>
 type AlertItem = Record<string, unknown>
@@ -111,8 +112,8 @@ function AlertRow({ alert, onDismiss }: { alert: AlertItem; onDismiss: (id: numb
 export default function StrategyMonitor() {
   const [watchlist, setWatchlist] = useState<WatchItem[]>([])
   const [loading, setLoading]     = useState(true)
-  const [error, setError]         = useState<string | null>(null)
   const [scanning, setScanning]   = useState(false)
+  const { addToast } = useToast()
 
   const [alerts, setAlerts]           = useState<AlertItem[]>([])
   const [alertsLoading, setAlertsLoading] = useState(true)
@@ -133,7 +134,7 @@ export default function StrategyMonitor() {
   useEffect(() => {
     getWatchlist()
       .then(w => setWatchlist(w))
-      .catch(e => setError(String(e)))
+      .catch(e => addToast('Failed to load watchlist: ' + String(e), 'error'))
       .finally(() => setLoading(false))
 
     loadAlerts()
@@ -185,12 +186,7 @@ export default function StrategyMonitor() {
         </button>
       </div>
 
-      {error && (
-        <div className="card" style={{ padding: '14px 16px', marginBottom: 16, display: 'flex', gap: 10, alignItems: 'center', borderColor: 'rgba(240,77,77,0.3)' }}>
-          <AlertCircle size={16} color="#F04D4D" />
-          <span style={{ fontFamily: 'JetBrains Mono', fontSize: 12, color: '#F04D4D' }}>{error}</span>
-        </div>
-      )}
+
 
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
         {/* Watchlist */}
