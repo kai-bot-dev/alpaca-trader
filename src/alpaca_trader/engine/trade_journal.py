@@ -212,6 +212,50 @@ class TradeJournal:
             "sharpe": sharpe,
         }
 
+    async def get_stats_by_strategy(self) -> dict[str, dict]:
+        """Return performance stats broken down per strategy.
+
+        Returns a dict keyed by strategy name, each with:
+        {total_trades, win_rate, avg_pnl, total_pnl, best_trade, worst_trade}
+        Only includes closed trades.
+        """
+        async with aiosqlite.connect(self._db_url) as db:
+            db.row_factory = aiosqlite.Row
+            cursor = await db.execute(
+                "SELECT strategy, pnl FROM trade_journal WHERE status = 'closed' AND pnl IS NOT NULL"
+            )
+            rows = await cursor.fetchall()
+
+        if not rows:
+            return {}
+
+        # Group by strategy
+        by_strategy: dict[str, list] = {}
+        for row in rows:
+            strat = row["strategy"] or "unknown"
+            pnl = float(row["pnl"])
+            by_strategy.setdefault(strat, []).append(pnl)
+
+        result: dict[str, dict] = {}
+        for strat, pnls in by_strategy.items():
+            total = len(pnls)
+            winners = [p for p in pnls if p > 0]
+            win_rate = len(winners) / total if total else 0.0
+            avg_pnl = sum(pnls) / total if total else 0.0
+            total_pnl = sum(pnls)
+            best_trade = max(pnls)
+            worst_trade = min(pnls)
+            result[strat] = {
+                "total_trades": total,
+                "win_rate": win_rate,
+                "avg_pnl": avg_pnl,
+                "total_pnl": total_pnl,
+                "best_trade": best_trade,
+                "worst_trade": worst_trade,
+            }
+
+        return result
+
     async def get_trade_count(self) -> int:
         """Return total number of closed trades (for the 50-trade paper lockout)."""
         async with aiosqlite.connect(self._db_url) as db:

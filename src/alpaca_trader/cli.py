@@ -1618,6 +1618,9 @@ def journal_list(
 
 @journal_app.command("stats")
 def journal_stats(
+    by_strategy: bool = typer.Option(
+        False, "--by-strategy", help="Break down stats by strategy"
+    ),
     json_output: bool = typer.Option(False, "--json", help="Output as JSON"),
 ):
     """Show trade journal statistics: win rate, P&L, trade count."""
@@ -1625,6 +1628,40 @@ def journal_stats(
 
     asyncio.run(db.init_db())
     journal = TradeJournal()
+
+    if by_strategy:
+        strat_stats = asyncio.run(journal.get_stats_by_strategy())
+        if json_output:
+            _print_json(strat_stats)
+            return
+        if not strat_stats:
+            console.print("[dim]No closed trades by strategy.[/dim]")
+            return
+        # Sort by total_pnl descending
+        sorted_strats = sorted(
+            strat_stats.items(), key=lambda x: x[1]["total_pnl"], reverse=True
+        )
+        table = Table(title="Journal Stats by Strategy")
+        table.add_column("Strategy", style="bold cyan")
+        table.add_column("Trades", justify="right")
+        table.add_column("Win Rate", justify="right")
+        table.add_column("Avg P&L", justify="right")
+        table.add_column("Total P&L", justify="right")
+        table.add_column("Best", justify="right")
+        table.add_column("Worst", justify="right")
+        for strat, s in sorted_strats:
+            table.add_row(
+                strat,
+                str(s["total_trades"]),
+                f"{s['win_rate']*100:.1f}%",
+                _fmt_decimal(s["avg_pnl"]),
+                _fmt_decimal(s["total_pnl"]),
+                _fmt_decimal(s["best_trade"]),
+                _fmt_decimal(s["worst_trade"]),
+            )
+        console.print(table)
+        return
+
     stats = asyncio.run(journal.get_stats())
     count = asyncio.run(journal.get_trade_count())
 

@@ -218,5 +218,67 @@ class TestGetOpenTradeForSymbol:
         assert trade is not None
 
 
+class TestGetStatsByStrategy:
+    def test_empty_returns_empty_dict(self, journal):
+        result = run(journal.get_stats_by_strategy())
+        assert result == {}
+
+    def test_multiple_strategies(self, journal):
+        # strategy_a: 2 wins, 1 loss
+        t1 = run(journal.log_entry("A", "buy", 10, 100.0, "strategy_a"))
+        t2 = run(journal.log_entry("B", "buy", 10, 100.0, "strategy_a"))
+        t3 = run(journal.log_entry("C", "buy", 10, 100.0, "strategy_a"))
+        run(journal.log_exit(t1, 110.0, "tp"))  # +100
+        run(journal.log_exit(t2, 115.0, "tp"))  # +150
+        run(journal.log_exit(t3, 90.0, "sl"))  # -100
+
+        # strategy_b: 1 win
+        t4 = run(journal.log_entry("D", "buy", 5, 200.0, "strategy_b"))
+        run(journal.log_exit(t4, 220.0, "tp"))  # +100
+
+        result = run(journal.get_stats_by_strategy())
+        assert "strategy_a" in result
+        assert "strategy_b" in result
+
+        a = result["strategy_a"]
+        assert a["total_trades"] == 3
+        assert a["win_rate"] == pytest.approx(2 / 3)
+        assert a["total_pnl"] == pytest.approx(150.0)
+        assert a["avg_pnl"] == pytest.approx(50.0)
+        assert a["best_trade"] == pytest.approx(150.0)
+        assert a["worst_trade"] == pytest.approx(-100.0)
+
+        b = result["strategy_b"]
+        assert b["total_trades"] == 1
+        assert b["win_rate"] == pytest.approx(1.0)
+        assert b["total_pnl"] == pytest.approx(100.0)
+
+    def test_open_trades_excluded(self, journal):
+        # Log one closed trade and one open trade for the same strategy
+        t1 = run(journal.log_entry("A", "buy", 10, 100.0, "my_strat"))
+        run(journal.log_exit(t1, 110.0, "tp"))  # closed
+        run(journal.log_entry("B", "buy", 10, 100.0, "my_strat"))  # open — not exited
+
+        result = run(journal.get_stats_by_strategy())
+        assert "my_strat" in result
+        assert result["my_strat"]["total_trades"] == 1  # only the closed one
+
+    def test_sorting_by_total_pnl(self, journal):
+        # strategy_low has small total_pnl, strategy_high has large total_pnl
+        t1 = run(journal.log_entry("A", "buy", 1, 100.0, "strategy_low"))
+        run(journal.log_exit(t1, 105.0, "tp"))  # +5
+
+        t2 = run(journal.log_entry("B", "buy", 10, 100.0, "strategy_high"))
+        run(journal.log_exit(t2, 200.0, "tp"))  # +1000
+
+        result = run(journal.get_stats_by_strategy())
+        assert (
+            result["strategy_high"]["total_pnl"] > result["strategy_low"]["total_pnl"]
+        )
+        # Verify the actual values
+        assert result["strategy_low"]["total_pnl"] == pytest.approx(5.0)
+        assert result["strategy_high"]["total_pnl"] == pytest.approx(1000.0)
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

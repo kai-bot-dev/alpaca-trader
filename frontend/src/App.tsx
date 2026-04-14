@@ -7,6 +7,8 @@ import {
   Activity,
   Settings as SettingsIcon,
 } from 'lucide-react'
+import { ToastProvider } from './hooks/useToast'
+import ToastContainer from './components/ToastContainer'
 import Overview from './pages/Overview'
 import OptionsChain from './pages/OptionsChain'
 import Positions from './pages/Positions'
@@ -25,8 +27,10 @@ const navItems = [
 
 export default function App() {
   return (
+    <ToastProvider>
     <BrowserRouter>
       <div className="flex h-screen overflow-hidden" style={{ background: '#050608' }}>
+        <ToastContainer />
         {/* Sidebar */}
         <aside
           className="flex flex-col flex-shrink-0"
@@ -117,5 +121,6 @@ export default function App() {
         </main>
       </div>
     </BrowserRouter>
+    </ToastProvider>
   )
 }

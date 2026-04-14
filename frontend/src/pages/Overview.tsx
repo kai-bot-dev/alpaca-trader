@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { TrendingUp, TrendingDown, DollarSign, Activity, AlertCircle } from 'lucide-react'
 import { getAccount, getPositions, getOrders } from '../api/client'
+import { useToast } from '../hooks/useToast'
 
 type Account = Record<string, unknown>
 type Position = Record<string, unknown>
@@ -58,7 +59,7 @@ export default function Overview() {
   const [positions, setPositions] = useState<Position[]>([])
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const { addToast } = useToast()
 
   useEffect(() => {
     const load = async () => {
@@ -72,7 +73,7 @@ export default function Overview() {
         setPositions(p)
         setOrders(o.slice(0, 10))
       } catch (e) {
-        setError(String(e))
+        addToast(String(e), 'error')
       } finally {
         setLoading(false)
       }
@@ -81,7 +82,6 @@ export default function Overview() {
   }, [])
 
   if (loading) return <PageLoader />
-  if (error)   return <PageError msg={error} />
 
   const equity    = parseFloat(String(account?.equity ?? 0))
   const cash      = parseFloat(String(account?.cash ?? 0))
