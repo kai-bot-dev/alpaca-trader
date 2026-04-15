@@ -36,10 +36,15 @@ This file drives the nightly auto-improvement cron job. Claude Code reads this, 
   - All 314 tests pass with new linting rules
   - Fixed ruff errors: removed unused variables, fixed ambiguous variable name (l -> leg)
   - Added TYPE_CHECKING import for pandas to fix undefined name warning
+- ✅ Dashboard: add error toast notifications (2026-04-15)
+  - StrategyMonitor: Show error toasts for failed alert loading, monitor status, and alert operations (previously silent failures)
+  - Orders: Show success/error toasts for order placement (previously only showed form errors)
+  - OptionsChain: Fixed undefined 'error' variable in conditional rendering
+  - All API errors now consistently display user-visible error messages via toast notifications
+  - 318 tests passing, frontend builds successfully
 - [ ] Add mypy strict checking and fix type errors (281 errors currently, requires multi-session effort)
 - [ ] Improve CLI output formatting consistency
 - [ ] Dashboard: add loading spinners for API calls
-- [ ] Dashboard: add error toast notifications
 
 
 ### Ideas (For Later)
