@@ -127,9 +127,12 @@ export default function StrategyMonitor() {
     setAlertsLoading(true)
     getAlerts({ status: 'active' })
       .then(a => setAlerts(a))
-      .catch(() => setAlerts([]))
+      .catch(e => {
+        addToast('Failed to load alerts: ' + String(e), 'error')
+        setAlerts([])
+      })
       .finally(() => setAlertsLoading(false))
-  }, [])
+  }, [addToast])
 
   useEffect(() => {
     getWatchlist()
@@ -141,8 +144,11 @@ export default function StrategyMonitor() {
 
     getMonitorStatus()
       .then(s => setMonitorStatus(s))
-      .catch(() => setMonitorStatus(null))
-  }, [loadAlerts])
+      .catch(e => {
+        addToast('Failed to load monitor status: ' + String(e), 'error')
+        setMonitorStatus(null)
+      })
+  }, [loadAlerts, addToast])
 
   const runScan = () => {
     setScanning(true)
@@ -153,12 +159,14 @@ export default function StrategyMonitor() {
     setChecking(true)
     checkAlerts()
       .then(() => loadAlerts())
-      .catch(() => {})
+      .catch(e => addToast('Failed to check alerts: ' + String(e), 'error'))
       .finally(() => setChecking(false))
   }
 
   const handleDismiss = (id: number) => {
-    dismissAlert(id).then(() => loadAlerts()).catch(() => {})
+    dismissAlert(id)
+      .then(() => loadAlerts())
+      .catch(e => addToast('Failed to dismiss alert: ' + String(e), 'error'))
   }
 
   const triggeredAlerts = alerts.filter(a => String(a.status) === 'triggered')

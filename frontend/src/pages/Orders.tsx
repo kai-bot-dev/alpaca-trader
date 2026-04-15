@@ -72,11 +72,14 @@ export default function Orders() {
     setSubmitting(true)
     try {
       await placeOrder(data)
+      addToast('Order placed successfully', 'success')
       setShowForm(false)
       setForm({ symbol: '', qty: '', side: 'buy', type: 'market', time_in_force: 'day', limit_price: '', stop_price: '' })
       await load()
     } catch (e) {
-      setFormError(String(e))
+      const errorMsg = 'Failed to place order: ' + String(e)
+      setFormError(errorMsg)
+      addToast(errorMsg, 'error')
     } finally {
       setSubmitting(false)
     }

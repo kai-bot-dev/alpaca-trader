@@ -152,7 +152,7 @@ export default function OptionsChain() {
         )}
       </div>
 
-      {!chain && !loading && !error && (
+      {!chain && !loading && (
         <div
           style={{
             display: 'flex',
